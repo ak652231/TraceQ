@@ -1,0 +1,44 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/mongodb"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("MONGODB_URL")
+}
+
+enum Role {
+  Regular
+  Police
+}
+
+model User {
+  id       String @id @default(auto()) @map("_id") @db.ObjectId
+  email    String @unique
+  phone    String
+  fullName String
+  role     Role
+
+  police PoliceDetails?
+}
+
+model PoliceDetails {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  fullName   String
+  email      String   @unique
+  phone      String
+  dob        DateTime
+  badgeId    String   @unique
+  rank       String
+  station    String
+  department String
+  district   String
+  state      String
+  idFront    String // Cloudinary image URL
+  idBack     String // Cloudinary image URL
+  verified   Boolean  @default(false)
+
+  userId String @unique @db.ObjectId
+  user   User   @relation(fields: [userId], references: [id])
+}

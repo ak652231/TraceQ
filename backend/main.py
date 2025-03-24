@@ -275,6 +275,8 @@ def compare_faces():
     """Compares two face images and generates enhanced analysis."""
     image1_url = request.args.get("image1_url")
     image2_url = request.args.get("image2_url")
+    missing_desc = request.args.get("missingDesc")
+    sighting_desc = request.args.get("sightingDesc")
     print(f"🟢 Received Image URLs: {image1_url}, {image2_url}")
     
     if not image1_url or not image2_url:

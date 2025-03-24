@@ -682,7 +682,7 @@ export default function SearchMissingPerson() {
     }
   }
 
-  // Render the appropriate step
+  
   const renderStep = () => {
     switch (currentStep) {
       case 1:
@@ -705,7 +705,7 @@ export default function SearchMissingPerson() {
                   name="fullName"
                   value={formData.fullName}
                   onChange={handleChange}
-                  className={`w-full pl-10 pr-4 py-2 border ${errors.fullName ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
+                  className={`text-black w-full pl-10 pr-4 py-2 border ${errors.fullName ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors placeholder:text-gray-400`}
                   placeholder="First and Last Name"
                 />
               </div>
@@ -726,7 +726,7 @@ export default function SearchMissingPerson() {
                   onChange={handleChange}
                   min="1"
                   max="120"
-                  className={`w-full px-4 py-2 border ${errors.age ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
+                  className={`text-black placeholder:text-gray-400 w-full px-4 py-2 border ${errors.age ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
                   placeholder="e.g., 25"
                 />
                 {errors.age && <p className="mt-1 text-sm text-red-600">{errors.age}</p>}
@@ -741,7 +741,7 @@ export default function SearchMissingPerson() {
                   name="gender"
                   value={formData.gender}
                   onChange={handleChange}
-                  className={`w-full px-4 py-2 border ${errors.gender ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors appearance-none`}
+                  className={`text-gray-400 w-full px-4 py-2 border ${errors.gender ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors appearance-none`}
                 >
                   <option value="">Select Gender</option>
                   <option value="Male">Male</option>
@@ -760,7 +760,7 @@ export default function SearchMissingPerson() {
                 onUploadSuccess={(url) => {
                   setFormData((prev) => ({
                     ...prev,
-                    photo: url, // Store uploaded image URL in formData
+                    photo: url,
                   }));
                 }}
                 acceptedFileTypes="image/*"
@@ -810,7 +810,7 @@ export default function SearchMissingPerson() {
                 value={formData.behavioralTraits}
                 onChange={handleChange}
                 rows={3}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                className="text-black placeholder:text-gray-400 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
                 placeholder="e.g., Shy, outgoing, anxious, etc."
               />
               <p className="mt-1 text-xs text-gray-500">
@@ -829,7 +829,7 @@ export default function SearchMissingPerson() {
                 value={formData.healthConditions}
                 onChange={handleChange}
                 rows={3}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                className="text-black placeholder:text-gray-400 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
                 placeholder="e.g., Diabetes, requires medication, etc."
               />
               <p className="mt-1 text-xs text-gray-500">Include any medical conditions that require attention</p>
@@ -869,7 +869,7 @@ export default function SearchMissingPerson() {
                   name="lastSeenLocation"
                   value={formData.lastSeenLocation}
                   onChange={handleLocChange}
-                  className={`w-full pl-10 pr-4 py-2 border ${errors.lastSeenLocation ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
+                  className={`placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border ${errors.lastSeenLocation ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
                   placeholder="Enter location "
                   autoComplete="off"
                 />
@@ -894,7 +894,7 @@ export default function SearchMissingPerson() {
                           <div className="flex items-start">
                             <MapPin className="h-5 w-5 text-red-500 mr-2 mt-0.5 flex-shrink-0" />
                             <div>
-                              <div className="text-sm font-medium">{suggestion.shortName}</div>
+                              <div className="text-black text-sm font-medium">{suggestion.shortName}</div>
                               {suggestion.shortName !== suggestion.name && (
                                 <div className="text-xs text-gray-500 truncate max-w-full">{suggestion.name}</div>
                               )}
@@ -952,7 +952,7 @@ export default function SearchMissingPerson() {
                     name="lastSeenDate"
                     value={formData.lastSeenDate}
                     onChange={handleChange}
-                    className={`w-full pl-10 pr-4 py-2 border ${errors.lastSeenDate ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
+                    className={`text-black w-full pl-10 pr-4 py-2 border ${errors.lastSeenDate ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
                   />
                 </div>
                 {errors.lastSeenDate && <p className="mt-1 text-sm text-red-600">{errors.lastSeenDate}</p>}
@@ -972,7 +972,7 @@ export default function SearchMissingPerson() {
                     name="lastSeenTime"
                     value={formData.lastSeenTime}
                     onChange={handleChange}
-                    className={`w-full pl-10 pr-4 py-2 border ${errors.lastSeenTime ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
+                    className={`text-black w-full pl-10 pr-4 py-2 border ${errors.lastSeenTime ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
                   />
                 </div>
                 {errors.lastSeenTime && <p className="mt-1 text-sm text-red-600">{errors.lastSeenTime}</p>}
@@ -1054,7 +1054,7 @@ export default function SearchMissingPerson() {
                       value={formData.height}
                       onChange={handleChange}
                       min="1"
-                      className={`w-full pl-10 pr-4 py-2 border ${errors.height ? "border-red-500" : "border-gray-300"} rounded-l-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
+                      className={`placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border ${errors.height ? "border-red-500" : "border-gray-300"} rounded-l-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
                       placeholder="e.g., 170"
                     />
                   </div>
@@ -1062,7 +1062,7 @@ export default function SearchMissingPerson() {
                     name="heightUnit"
                     value={formData.heightUnit}
                     onChange={handleChange}
-                    className="w-20 py-2 px-2 border border-gray-300 rounded-r-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                    className=" text-black w-20 py-2 px-2 border border-gray-300 rounded-r-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
                   >
                     <option value="cm">cm</option>
                     <option value="ft">ft</option>
@@ -1087,7 +1087,7 @@ export default function SearchMissingPerson() {
                       value={formData.weight}
                       onChange={handleChange}
                       min="1"
-                      className={`w-full pl-10 pr-4 py-2 border ${errors.weight ? "border-red-500" : "border-gray-300"} rounded-l-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
+                      className={`placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border ${errors.weight ? "border-red-500" : "border-gray-300"} rounded-l-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
                       placeholder="e.g., 65"
                     />
                   </div>
@@ -1095,7 +1095,7 @@ export default function SearchMissingPerson() {
                     name="weightUnit"
                     value={formData.weightUnit}
                     onChange={handleChange}
-                    className="w-20 py-2 px-2 border border-gray-300 rounded-r-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                    className="placeholder:text-gray-400 text-black w-20 py-2 px-2 border border-gray-300 rounded-r-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
                   >
                     <option value="kg">kg</option>
                     <option value="lbs">lbs</option>
@@ -1120,7 +1120,7 @@ export default function SearchMissingPerson() {
                     name="hairColor"
                     value={formData.hairColor}
                     onChange={handleChange}
-                    className={`w-full pl-10 pr-4 py-2 border ${errors.hairColor ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors appearance-none`}
+                    className={`placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border ${errors.hairColor ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors appearance-none`}
                   >
                     <option value="">Select Hair Color</option>
                     <option value="Black">Black</option>
@@ -1148,7 +1148,7 @@ export default function SearchMissingPerson() {
                     name="eyeColor"
                     value={formData.eyeColor}
                     onChange={handleChange}
-                    className={`w-full pl-10 pr-4 py-2 border ${errors.eyeColor ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors appearance-none`}
+                    className={`placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border ${errors.eyeColor ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors appearance-none`}
                   >
                     <option value="">Select Eye Color</option>
                     <option value="Black">Black</option>
@@ -1175,7 +1175,7 @@ export default function SearchMissingPerson() {
                 value={formData.clothingWorn}
                 onChange={handleChange}
                 rows={2}
-                className={`w-full px-4 py-2 border ${errors.clothingWorn ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
+                className={`placeholder:text-gray-400 text-black w-full px-4 py-2 border ${errors.clothingWorn ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
                 placeholder="e.g., Blue jeans, red t-shirt, black jacket"
               />
               {errors.clothingWorn && <p className="mt-1 text-sm text-red-600">{errors.clothingWorn}</p>}
@@ -1192,7 +1192,7 @@ export default function SearchMissingPerson() {
                 value={formData.identifyingMarks}
                 onChange={handleChange}
                 rows={2}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                className="placeholder:text-gray-400 text-black w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
                 placeholder="e.g., Scar on left cheek, tattoo on right arm"
               />
               <p className="mt-1 text-xs text-gray-500">
@@ -1226,7 +1226,7 @@ export default function SearchMissingPerson() {
                     <div key={index} className="relative">
                       <div className="w-full h-24 relative rounded-md overflow-hidden">
                         <Image
-                          src={photo || "/placeholder.svg"} // Use Cloudinary URL directly
+                          src={photo || "/placeholder.svg"} 
                           alt={`Additional photo ${index + 1}`}
                           fill
                           style={{ objectFit: "cover" }}
@@ -1237,7 +1237,7 @@ export default function SearchMissingPerson() {
                         onClick={() => {
                           setFormData((prev) => ({
                             ...prev,
-                            additionalPhotos: prev.additionalPhotos.filter((_, i) => i !== index), // Remove photo
+                            additionalPhotos: prev.additionalPhotos.filter((_, i) => i !== index),
                           }));
                         }}
                         className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1"
@@ -1299,7 +1299,7 @@ export default function SearchMissingPerson() {
                   name="reporterName"
                   value={formData.reporterName}
                   onChange={handleChange}
-                  className={`w-full pl-10 pr-4 py-2 border ${errors.reporterName ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
+                  className={`placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border ${errors.reporterName ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
                   placeholder="Your full name"
                 />
               </div>
@@ -1320,7 +1320,7 @@ export default function SearchMissingPerson() {
                   name="relationship"
                   value={formData.relationship}
                   onChange={handleChange}
-                  className={`w-full pl-10 pr-4 py-2 border ${errors.relationship ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors appearance-none`}
+                  className={`placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border ${errors.relationship ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors appearance-none`}
                 >
                   <option value="">Select Relationship</option>
                   <option value="Parent">Parent</option>
@@ -1353,7 +1353,7 @@ export default function SearchMissingPerson() {
                     name="mobileNumber"
                     value={formData.mobileNumber}
                     onChange={handleChange}
-                    className={`w-full pl-10 pr-4 py-2 border ${errors.mobileNumber ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
+                    className={`placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border ${errors.mobileNumber ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
                     placeholder="10-digit mobile number"
                   />
                 </div>
@@ -1374,7 +1374,7 @@ export default function SearchMissingPerson() {
                     name="emailAddress"
                     value={formData.emailAddress}
                     onChange={handleChange}
-                    className={`w-full pl-10 pr-4 py-2 border ${errors.emailAddress ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
+                    className={`placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border ${errors.emailAddress ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
                     placeholder="your@email.com"
                   />
                 </div>
@@ -1467,8 +1467,8 @@ export default function SearchMissingPerson() {
                     type="button"
                     onClick={() => {
                       setFormData((prev) => ({ ...prev, aadhaarImage: null }));
-                      setIsAadhaarValid(false); // ❌ Reset Aadhaar validation when image is removed
-                      setVerificationMessage(""); // ❌ Clear any previous verification message
+                      setIsAadhaarValid(false); 
+                      setVerificationMessage(""); 
                     }}
                     className="mt-2 text-red-600 hover:text-red-800 text-sm font-medium flex items-center"
                   >
@@ -1573,7 +1573,7 @@ export default function SearchMissingPerson() {
       </div>
 
       {/* Main container */}
-      <div className="max-w-5xl mx-auto relative z-10">
+      <div className="max-w-5xl mx-auto relative z-10 pt-20">
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="font-poppins font-bold text-3xl md:text-4xl text-gray-800 mb-2">

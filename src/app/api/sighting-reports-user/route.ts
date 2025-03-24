@@ -28,16 +28,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Missing person ID is required" }, { status: 400 })
     }
 
-    const missingPerson = await prisma.missingPerson.findUnique({
-      where: {
-        id: missingPersonId,
-        userId,
-      },
-    })
-
-    if (!missingPerson) {
-      return NextResponse.json({ error: "Missing person not found or not owned by user" }, { status: 404 })
-    }
+    
 
     const sightingReports = await prisma.sightingReport.findMany({
       where: {

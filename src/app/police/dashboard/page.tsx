@@ -1,42 +1,25 @@
 "use client"
-import { useState, useEffect, useRef } from "react"
+import { useEffect } from "react"
 import { Montserrat, Poppins } from "next/font/google"
-import {
-  MapPin,
-  Calendar,
-  Eye,
-  AlertCircle,
-  Search,
-  FileText,
-  User,
-  Clock,
-  X,
-  List,
-  Filter,
-  ArrowLeft,
-  ArrowRight,
-  Info,
-  MapIcon,
-  ZoomIn,
-  ZoomOut,
-} from "lucide-react"
+import { MapPin, Calendar, Eye, AlertCircle, Search, FileText, User, Clock, List, Filter, Info } from "lucide-react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
-import io from "socket.io-client"
-import Cookies from "js-cookie"
-import dynamic from "next/dynamic"
-
-const MapContainer = dynamic(() => import("react-leaflet").then((mod) => mod.MapContainer), {
-  ssr: false,
-  loading: () => (
-    <div className="h-full w-full flex items-center justify-center bg-gray-100">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500"></div>
-    </div>
-  ),
-})
-const TileLayer = dynamic(() => import("react-leaflet").then((mod) => mod.TileLayer), { ssr: false })
-const Marker = dynamic(() => import("react-leaflet").then((mod) => mod.Marker), { ssr: false })
-const Popup = dynamic(() => import("react-leaflet").then((mod) => mod.Popup), { ssr: false })
+import { useAppDispatch, useAppSelector } from "../../../../store/hooks"
+import { checkUserLogin } from "../../../../store/slices/authSlice"
+import {
+  fetchAssignedReports,
+  setSearchQuery,
+  setStatusFilter,
+  setSelectedReport,
+  setShowModal,
+  markReportAsSeen,
+  clearFilters,
+} from "../../../../store/slices/policeDashboardSlice"
+import { setMousePosition, setLoading, setError } from "../../../../store/slices/uiSlice"
+import { initializeSocket, disconnectSocket } from "../../utils/socket"
+import { formatDate } from "../../utils/formatters"
+import { getStatusColor } from "../../utils/formatters"
+import ReportModal from "../../../components/police/report-modal"
 
 const montserrat = Montserrat({
   subsets: ["latin"],
@@ -51,266 +34,69 @@ const poppins = Poppins({
   display: "swap",
 })
 
-interface MissingPerson {
-  id: string
-  fullName: string
-  age: number
-  gender: string
-  photo: string
-  lastSeenLocation: string
-  lastSeenDate: string
-  lastSeenTime: string
-  status: string
-  createdAt: string
-  isSeen: boolean
-  additionalPhotos: string[]
-  behavioralTraits?: string
-  healthConditions?: string
-  height: number
-  heightUnit: string
-  weight: number
-  weightUnit: string
-  hairColor: string
-  eyeColor: string
-  clothingWorn: string
-  identifyingMarks?: string
-  reporterName: string
-  relationship: string
-  mobileNumber: string
-  emailAddress?: string
-  notificationCount?: number
-  lat?: number
-  lng?: number
-}
-
 export default function PoliceDashboard() {
-  const [assignedReports, setAssignedReports] = useState<MissingPerson[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
-  const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [showModal, setShowModal] = useState(false)
-  const [selectedReport, setSelectedReport] = useState<MissingPerson | null>(null)
-  const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0)
+  const dispatch = useAppDispatch()
   const router = useRouter()
-  const socketRef = useRef<any>(null)
-  const [userId, setUserId] = useState("")
-  const [modalViewMode, setModalViewMode] = useState<"details" | "map">("details")
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
 
-  const [isLogin, setIsLogin] = useState(false)
+  const { userId, isAuthenticated } = useAppSelector((state) => state.auth)
+  const { isLoading, error, mousePosition } = useAppSelector((state) => state.ui)
+  const { assignedReports, searchQuery, statusFilter, showModal } = useAppSelector((state) => state.policeDashboard)
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      setMousePosition({ x: e.clientX, y: e.clientY })
+      dispatch(setMousePosition({ x: e.clientX, y: e.clientY }))
     }
 
     window.addEventListener("mousemove", handleMouseMove)
     return () => {
       window.removeEventListener("mousemove", handleMouseMove)
     }
-  }, [])
-
-  const checkUserLogin = () => {
-    const token = Cookies.get("sessionToken") 
-    if (token) {
-      try {
-        const decoded = JSON.parse(atob(token.split(".")[1]))
-        setUserId(decoded.id)
-        setIsLogin(true)
-        return true
-      } catch (error) {
-        console.error("Error decoding token:", error)
-        setIsLogin(false)
-        return false
-      }
-    } else {
-      setIsLogin(false)
-      return false
-    }
-  }
-  useEffect(() => {
-    checkUserLogin()
-  }, []) 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      import("leaflet/dist/leaflet.css")
-
-      import("leaflet").then((L) => {
-        delete L.Icon.Default.prototype._getIconUrl
-        L.Icon.Default.mergeOptions({
-          iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
-          iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
-          shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-        })
-      })
-    }
-  }, [])
-
-  const initializeSocket = () => {
-    if (!socketRef.current && userId) {
-      const socket = io()
-
-      socket.on("connect", () => {
-        console.log("Socket connected in police dashboard")
-        socket.emit("authenticate", userId)
-        console.log("Emitting authenticate event with userId:", userId)
-      })
-
-      socket.on("notification", (data) => {
-        const missingId = data.missingPersonId
-        console.log("Notification received for missing person:", missingId)
-        setAssignedReports((prevReports) =>
-          prevReports.map((report) =>
-            report.id === missingId ? { ...report, notificationCount: (report.notificationCount || 0) + 1 } : report,
-          ),
-        )
-      })
-
-      socketRef.current = socket
-    }
-  }
-
-  const fetchAssignedReports = async () => {
-    try {
-      setIsLoading(true)
-      const response = await fetch("/api/police/assigned-reports")
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch assigned reports")
-      }
-
-      const data = await response.json()
-
-      const reportsWithNotifications = await Promise.all(
-        data.map(async (report: MissingPerson) => {
-          try {
-            const notifResponse = await fetch(`/api/notifications/countSighting?missingPersonId=${report.id}`)
-            if (notifResponse.ok) {
-              const notifData = await notifResponse.json()
-              return { ...report, notificationCount: notifData.count }
-            }
-            return { ...report, notificationCount: 0 }
-          } catch (error) {
-            console.error(`Error fetching notifications for report ${report.id}:`, error)
-            return { ...report, notificationCount: 0 }
-          }
-        }),
-      )
-
-      setAssignedReports(reportsWithNotifications)
-      setIsLoading(false)
-    } catch (error) {
-      console.error("Error fetching assigned reports:", error)
-      setError("Failed to load assigned reports. Please try again later.")
-      setIsLoading(false)
-    }
-  }
-
-  const markReportAsSeen = async (reportId: string) => {
-    try {
-      const response = await fetch(`/api/police/mark-missing-seen/${reportId}`, {
-        method: "POST",
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to mark report as seen")
-      }
-
-      setAssignedReports((prevReports) =>
-        prevReports.map((report) => (report.id === reportId ? { ...report, isSeen: true } : report)),
-      )
-
-      updateNavbarNotificationCount()
-    } catch (error) {
-      console.error("Error marking report as seen:", error)
-    }
-  }
-
-  const updateNavbarNotificationCount = async () => {
-    try {
-      const notifResponse = await fetch("/api/police/total-notification-count")
-      if (notifResponse.ok) {
-        const data = await notifResponse.json()
-        console.log("Notification count:", data.count)
-        if (typeof window !== "undefined") {
-          console.log("disatch")
-          const event = new CustomEvent("updateNotificationCount", {
-            detail: { count: data.count },
-          })
-          window.dispatchEvent(event)
-        }
-      }
-    } catch (error) {
-      console.error("Error updating navbar notification count:", error)
-    }
-  }
-
-  const getUserLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setUserLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          })
-        },
-        (error) => {
-          console.error("Error getting user location:", error)
-        },
-      )
-    }
-  }
-
-  const handleViewFullReport = (report: MissingPerson) => {
-    setSelectedReport(report)
-    setCurrentPhotoIndex(0)
-    setShowModal(true)
-    setModalViewMode("details") 
-    getUserLocation() 
-    if (!report.isSeen) {
-      markReportAsSeen(report.id)
-    }
-  }
-
-  const handleViewSightings = (reportId: string) => {
-    router.push(`/police/sightings/${reportId}`)
-  }
-
-  const nextPhoto = () => {
-    if (selectedReport && currentPhotoIndex < selectedReport.additionalPhotos.length - 1) {
-      setCurrentPhotoIndex(currentPhotoIndex + 1)
-    }
-  }
-
-  const prevPhoto = () => {
-    if (currentPhotoIndex > 0) {
-      setCurrentPhotoIndex(currentPhotoIndex - 1)
-    }
-  }
+  }, [dispatch])
 
   useEffect(() => {
     const initializeData = async () => {
-      if (!userId) return
+      dispatch(setLoading(true))
 
-      initializeSocket()
+      try {
+        const resultAction = await dispatch(checkUserLogin())
+        if (checkUserLogin.rejected.match(resultAction)) {
+          router.push("/auth")
+          return
+        }
 
-      await fetchAssignedReports()
+        const currentUserId = resultAction.payload as string
+
+        initializeSocket(currentUserId, dispatch, null, "policeDashboard")
+
+        await dispatch(fetchAssignedReports())
+      } catch (err) {
+        dispatch(setError("An unexpected error occurred. Please try again."))
+      } finally {
+        dispatch(setLoading(false))
+      }
     }
 
     initializeData()
 
     return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect()
-        socketRef.current = null
+      disconnectSocket()
+    }
+  }, [dispatch, router])
+
+  const handleViewFullReport = (reportId: string) => {
+    const report = assignedReports.find((r) => r.id === reportId)
+    if (report) {
+      dispatch(setSelectedReport(report))
+      dispatch(setShowModal(true))
+
+      if (!report.isSeen) {
+        dispatch(markReportAsSeen(reportId))
       }
     }
-  }, [userId, router])
+  }
 
-  const formatDate = (dateString: string) => {
-    const options: Intl.DateTimeFormatOptions = { year: "numeric", month: "long", day: "numeric" }
-    return new Date(dateString).toLocaleDateString("en-US", options)
+  const handleViewSightings = (reportId: string) => {
+    router.push(`/police/sightings/${reportId}`)
   }
 
   const filteredReports = assignedReports.filter((report) => {
@@ -322,21 +108,6 @@ export default function PoliceDashboard() {
 
     return matchesSearch && matchesStatus
   })
-
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case "pending":
-        return "bg-yellow-100 text-yellow-800"
-      case "active":
-        return "bg-blue-100 text-blue-800"
-      case "found":
-        return "bg-green-100 text-green-800"
-      case "closed":
-        return "bg-gray-100 text-gray-800"
-      default:
-        return "bg-gray-100 text-gray-800"
-    }
-  }
 
   return (
     <div
@@ -385,7 +156,7 @@ export default function PoliceDashboard() {
                 type="text"
                 placeholder="Search by name or location..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => dispatch(setSearchQuery(e.target.value))}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
               />
             </div>
@@ -396,7 +167,7 @@ export default function PoliceDashboard() {
               </div>
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(e) => dispatch(setStatusFilter(e.target.value))}
                 className="pl-10 pr-8 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors appearance-none bg-white"
               >
                 <option value="all">All Statuses</option>
@@ -505,7 +276,7 @@ export default function PoliceDashboard() {
 
                     <div className="mt-4 flex flex-wrap gap-3">
                       <button
-                        onClick={() => handleViewFullReport(report)}
+                        onClick={() => handleViewFullReport(report.id)}
                         className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-md transition-colors duration-200 flex items-center"
                       >
                         <div className="relative">
@@ -550,10 +321,7 @@ export default function PoliceDashboard() {
               No reports match your search criteria. Try adjusting your search terms or filters.
             </p>
             <button
-              onClick={() => {
-                setSearchQuery("")
-                setStatusFilter("all")
-              }}
+              onClick={() => dispatch(clearFilters())}
               className="mt-4 bg-gray-200 hover:bg-gray-300 text-gray-800 font-poppins font-medium py-2 px-4 rounded-md transition-colors duration-200"
             >
               Clear Filters
@@ -562,351 +330,8 @@ export default function PoliceDashboard() {
         )}
       </div>
 
-      {/* Full Report Modal */}
-      {showModal && selectedReport && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white p-4 border-b border-gray-200 flex justify-between items-center z-10">
-              <h2 className="font-poppins font-semibold text-xl text-gray-800">
-                {selectedReport.fullName} - Full Report
-              </h2>
-              <div className="flex items-center gap-2">
-                <div className="flex border border-gray-300 rounded-md overflow-hidden">
-                  <button
-                    onClick={() => setModalViewMode("details")}
-                    className={`py-1.5 px-3 flex items-center text-sm ${
-                      modalViewMode === "details" ? "bg-red-600 text-white" : "bg-white text-gray-700 hover:bg-gray-100"
-                    }`}
-                  >
-                    <FileText className="h-4 w-4 mr-1" />
-                    Details
-                  </button>
-                  <button
-                    onClick={() => setModalViewMode("map")}
-                    className={`py-1.5 px-3 flex items-center text-sm ${
-                      modalViewMode === "map" ? "bg-red-600 text-white" : "bg-white text-gray-700 hover:bg-gray-100"
-                    }`}
-                  >
-                    <MapIcon className="h-4 w-4 mr-1" />
-                    Map
-                  </button>
-                </div>
-                <button onClick={() => setShowModal(false)} className="p-1 rounded-full hover:bg-gray-100">
-                  <X className="h-6 w-6 text-gray-500" />
-                </button>
-              </div>
-            </div>
-
-            <div className="p-6">
-              {modalViewMode === "details" ? (
-                <>
-                  {/* Main info section */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                    {/* Photo carousel */}
-                    <div>
-                      <h3 className="font-medium text-gray-800 mb-3">Photos</h3>
-                      <div className="relative h-64 w-full rounded-md overflow-hidden bg-gray-100 mb-2">
-                        <Image
-                          src={
-                            currentPhotoIndex === 0
-                              ? selectedReport.photo
-                              : selectedReport.additionalPhotos[currentPhotoIndex - 1] ||
-                                "/placeholder.svg?height=300&width=300"
-                          }
-                          alt={selectedReport.fullName}
-                          fill
-                          className="object-cover"
-                        />
-                      </div>
-
-                      {/* Carousel controls */}
-                      {(selectedReport.additionalPhotos.length > 0 || currentPhotoIndex > 0) && (
-                        <div className="flex justify-between items-center">
-                          <button
-                            onClick={prevPhoto}
-                            disabled={currentPhotoIndex === 0}
-                            className={`p-1 rounded-full ${
-                              currentPhotoIndex === 0 ? "text-gray-300" : "text-gray-700 hover:bg-gray-100"
-                            }`}
-                          >
-                            <ArrowLeft className="h-5 w-5" />
-                          </button>
-
-                          <span className="text-sm text-gray-500">
-                            {currentPhotoIndex + 1} of {selectedReport.additionalPhotos.length + 1}
-                          </span>
-
-                          <button
-                            onClick={nextPhoto}
-                            disabled={currentPhotoIndex >= selectedReport.additionalPhotos.length}
-                            className={`p-1 rounded-full ${
-                              currentPhotoIndex >= selectedReport.additionalPhotos.length
-                                ? "text-gray-300"
-                                : "text-gray-700 hover:bg-gray-100"
-                            }`}
-                          >
-                            <ArrowRight className="h-5 w-5" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Basic information */}
-                    <div>
-                      <h3 className="font-medium text-gray-800 mb-3">Basic Information</h3>
-                      <div className="bg-gray-50 rounded-md p-4 space-y-3">
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <p className="text-sm text-gray-500">Full Name</p>
-                            <p className="font-medium">{selectedReport.fullName}</p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-500">Age</p>
-                            <p className="font-medium">{selectedReport.age} years</p>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <p className="text-sm text-gray-500">Gender</p>
-                            <p className="font-medium">{selectedReport.gender}</p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-500">Status</p>
-                            <p
-                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(selectedReport.status)}`}
-                            >
-                              {selectedReport.status}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="text-sm text-gray-500">Last Seen Location</p>
-                          <p className="font-medium">{selectedReport.lastSeenLocation}</p>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <p className="text-sm text-gray-500">Last Seen Date</p>
-                            <p className="font-medium">{formatDate(selectedReport.lastSeenDate)}</p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-500">Last Seen Time</p>
-                            <p className="font-medium">{selectedReport.lastSeenTime}</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Physical description */}
-                  <div className="mb-6">
-                    <h3 className="font-medium text-gray-800 mb-3">Physical Description</h3>
-                    <div className="bg-gray-50 rounded-md p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-sm text-gray-500">Height</p>
-                        <p className="font-medium">
-                          {selectedReport.height} {selectedReport.heightUnit}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-500">Weight</p>
-                        <p className="font-medium">
-                          {selectedReport.weight} {selectedReport.weightUnit}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-500">Hair Color</p>
-                        <p className="font-medium">{selectedReport.hairColor}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-500">Eye Color</p>
-                        <p className="font-medium">{selectedReport.eyeColor}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Additional details */}
-                  <div className="mb-6">
-                    <h3 className="font-medium text-gray-800 mb-3">Additional Details</h3>
-                    <div className="space-y-4">
-                      <div className="bg-gray-50 rounded-md p-4">
-                        <p className="text-sm text-gray-500 mb-1">Clothing When Last Seen</p>
-                        <p>{selectedReport.clothingWorn}</p>
-                      </div>
-
-                      {selectedReport.identifyingMarks && (
-                        <div className="bg-gray-50 rounded-md p-4">
-                          <p className="text-sm text-gray-500 mb-1">Identifying Marks</p>
-                          <p>{selectedReport.identifyingMarks}</p>
-                        </div>
-                      )}
-
-                      {selectedReport.behavioralTraits && (
-                        <div className="bg-gray-50 rounded-md p-4">
-                          <p className="text-sm text-gray-500 mb-1">Behavioral Traits</p>
-                          <p>{selectedReport.behavioralTraits}</p>
-                        </div>
-                      )}
-
-                      {selectedReport.healthConditions && (
-                        <div className="bg-gray-50 rounded-md p-4">
-                          <p className="text-sm text-gray-500 mb-1">Health Conditions</p>
-                          <p>{selectedReport.healthConditions}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Reporter information */}
-                  <div>
-                    <h3 className="font-medium text-gray-800 mb-3">Reporter Information</h3>
-                    <div className="bg-gray-50 rounded-md p-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-sm text-gray-500">Reporter Name</p>
-                          <p className="font-medium">{selectedReport.reporterName}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-500">Relationship</p>
-                          <p className="font-medium">{selectedReport.relationship}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-500">Mobile Number</p>
-                          <p className="font-medium">{selectedReport.mobileNumber}</p>
-                        </div>
-                        {selectedReport.emailAddress && (
-                          <div>
-                            <p className="text-sm text-gray-500">Email Address</p>
-                            <p className="font-medium">{selectedReport.emailAddress}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="h-[500px] bg-gray-100 rounded-lg overflow-hidden">
-                  {typeof window !== "undefined" && (
-                    <MapContainer
-                      center={[selectedReport.lat || 20.5937, selectedReport.lng || 78.9629]}
-                      zoom={13}
-                      style={{ height: "100%", width: "100%" }}
-                      zoomControl={false}
-                    >
-                      <TileLayer
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                      />
-
-                      {/* Missing person marker (red) */}
-                      {selectedReport.lat && selectedReport.lng && (
-                        <Marker
-                          position={[selectedReport.lat, selectedReport.lng]}
-                          icon={
-                            new window.L.Icon({
-                              iconUrl:
-                                "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
-                              shadowUrl:
-                                "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-                              iconSize: [25, 41],
-                              iconAnchor: [12, 41],
-                              popupAnchor: [1, -34],
-                              shadowSize: [41, 41],
-                            })
-                          }
-                        >
-                          <Popup>
-                            <div className="text-center">
-                              <p className="font-medium text-sm">Last Seen Location</p>
-                              <p className="text-xs text-gray-600">{selectedReport.lastSeenLocation}</p>
-                            </div>
-                          </Popup>
-                        </Marker>
-                      )}
-
-                      {/* User location marker (blue) */}
-                      {userLocation && (
-                        <Marker
-                          position={[userLocation.lat, userLocation.lng]}
-                          icon={
-                            new window.L.Icon({
-                              iconUrl:
-                                "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png",
-                              shadowUrl:
-                                "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-                              iconSize: [25, 41],
-                              iconAnchor: [12, 41],
-                              popupAnchor: [1, -34],
-                              shadowSize: [41, 41],
-                            })
-                          }
-                        >
-                          <Popup>
-                            <div className="text-center">
-                              <p className="font-medium text-sm">Your Current Location</p>
-                            </div>
-                          </Popup>
-                        </Marker>
-                      )}
-
-                      {/* Custom controls */}
-                      <div className="absolute right-4 top-4 z-[1000] flex flex-col gap-2">
-                        <button
-                          onClick={() => {
-                            const map = document.querySelector(".leaflet-container")._leafletObject
-                            map.zoomIn()
-                          }}
-                          className="bg-white p-2 rounded-md shadow-md hover:bg-gray-100 transition-colors"
-                          aria-label="Zoom in"
-                        >
-                          <ZoomIn className="h-5 w-5 text-gray-700" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            const map = document.querySelector(".leaflet-container")._leafletObject
-                            map.zoomOut()
-                          }}
-                          className="bg-white p-2 rounded-md shadow-md hover:bg-gray-100 transition-colors"
-                          aria-label="Zoom out"
-                        >
-                          <ZoomOut className="h-5 w-5 text-gray-700" />
-                        </button>
-                      </div>
-                    </MapContainer>
-                  )}
-
-                  {!selectedReport.lat || !selectedReport.lng ? (
-                    <div className="absolute inset-0 flex items-center justify-center bg-white/80">
-                      <div className="text-center p-4">
-                        <AlertCircle className="h-8 w-8 text-yellow-500 mx-auto mb-2" />
-                        <p className="text-gray-700 font-medium">No location coordinates available for this report</p>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              )}
-
-              {/* Action buttons */}
-              <div className="mt-6 flex justify-end space-x-3">
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={() => handleViewSightings(selectedReport.id)}
-                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-                >
-                  View Sightings
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Report Modal */}
+      <ReportModal onViewSightings={handleViewSightings} />
     </div>
   )
 }

@@ -1,6 +1,6 @@
 "use client"
 import { Montserrat, Poppins } from "next/font/google"
-import { Search, Bell, Menu, X, Shield, LogOut } from "lucide-react"
+import { Search, Menu, X, Shield, LogOut } from "lucide-react"
 import Link from "next/link"
 import { useState } from "react"
 import { memo } from "react"
@@ -21,14 +21,7 @@ const poppins = Poppins({
 
 const Navbar = memo(function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const { 
-    isLogin, 
-    notificationCount, 
-    handleLogout, 
-    handleNotificationClick,
-    userRole,
-    policeName
-  } = useNavbar()
+  const { isLogin, notificationCount, handleLogout, handleNotificationClick, userRole, policeName } = useNavbar()
 
   const isPolice = userRole === "police"
 
@@ -36,7 +29,7 @@ const Navbar = memo(function Navbar() {
     if (isPolice) {
       return [
         { text: "Dashboard", href: "/police/dashboard" },
-        { text: "All Reports", href: "/police/all-reports" }
+        { text: "All Reports", href: "/police/all-reports" },
       ]
     } else {
       return [
@@ -49,7 +42,7 @@ const Navbar = memo(function Navbar() {
   }
 
   const navLinks = getNavigationLinks()
-  
+
   const logoHref = isPolice ? "/police/dashboard" : "/"
   const logoText = isPolice ? (
     <span className="font-poppins text-red-600 font-bold text-xl tracking-tight cursor-pointer flex items-center">
@@ -57,9 +50,7 @@ const Navbar = memo(function Navbar() {
       FindMate Police
     </span>
   ) : (
-    <span className="font-poppins text-red-600 font-bold text-xl tracking-tight cursor-pointer">
-      FindMate
-    </span>
+    <span className="font-poppins text-red-600 font-bold text-xl tracking-tight cursor-pointer">FindMate</span>
   )
 
   return (
@@ -80,8 +71,14 @@ const Navbar = memo(function Navbar() {
               <div className="ml-10 flex items-center space-x-8">
                 {navLinks.map((item, index) => (
                   <Link key={index} href={item.href} prefetch={false}>
-                    <span className="font-poppins text-gray-800 hover:text-red-600 px-3 py-2 text-sm font-medium transition-colors duration-200 border-b-2 border-transparent hover:border-red-600 cursor-pointer">
+                    <span className="font-poppins text-gray-800 hover:text-red-600 px-3 py-2 text-sm font-medium transition-colors duration-200 border-b-2 border-transparent hover:border-red-600 cursor-pointer relative">
                       {item.text}
+                      {((isPolice && item.text === "Dashboard") || (!isPolice && item.text === "My Reports")) &&
+                        notificationCount > 0 && (
+                          <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                            {notificationCount > 99 ? "99+" : notificationCount}
+                          </span>
+                        )}
                     </span>
                   </Link>
                 ))}
@@ -90,23 +87,6 @@ const Navbar = memo(function Navbar() {
 
             {/* Action Buttons */}
             <div className="hidden md:flex items-center space-x-4">
-              <button className="p-1 rounded-full text-gray-600 hover:text-red-600 focus:outline-none">
-                <Search className="h-5 w-5" />
-              </button>
-              <div className="relative">
-                <button
-                  onClick={handleNotificationClick}
-                  className="p-1 rounded-full text-gray-600 hover:text-red-600 focus:outline-none"
-                >
-                  <Bell className="h-5 w-5" />
-                  {notificationCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-                      {notificationCount > 99 ? "99+" : notificationCount}
-                    </span>
-                  )}
-                </button>
-              </div>
-
               {/* User actions based on role */}
               {isLogin ? (
                 isPolice ? (
@@ -158,8 +138,14 @@ const Navbar = memo(function Navbar() {
             <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
               {navLinks.map((item, index) => (
                 <Link key={index} href={item.href} prefetch={false}>
-                  <span className="font-poppins text-gray-800 hover:text-red-600 block px-3 py-2 text-base font-medium cursor-pointer">
+                  <span className="font-poppins text-gray-800 hover:text-red-600 block px-3 py-2 text-base font-medium cursor-pointer relative">
                     {item.text}
+                    {((isPolice && item.text === "Dashboard") || (!isPolice && item.text === "My Reports")) &&
+                      notificationCount > 0 && (
+                        <span className="absolute top-2 ml-2 inline-flex bg-red-600 text-white text-xs font-bold rounded-full h-5 w-5 items-center justify-center">
+                          {notificationCount > 99 ? "99+" : notificationCount}
+                        </span>
+                      )}
                   </span>
                 </Link>
               ))}
@@ -167,19 +153,6 @@ const Navbar = memo(function Navbar() {
                 <button className="p-1 rounded-full text-gray-600 hover:text-red-600 focus:outline-none">
                   <Search className="h-5 w-5" />
                 </button>
-                <div className="relative">
-                  <button
-                    onClick={handleNotificationClick}
-                    className="p-1 rounded-full text-gray-600 hover:text-red-600 focus:outline-none"
-                  >
-                    <Bell className="h-5 w-5" />
-                    {notificationCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-                        {notificationCount > 99 ? "99+" : notificationCount}
-                      </span>
-                    )}
-                  </button>
-                </div>
               </div>
             </div>
             <div className="pt-4 pb-3 border-t border-gray-200">
@@ -227,3 +200,4 @@ const Navbar = memo(function Navbar() {
 })
 
 export default Navbar
+

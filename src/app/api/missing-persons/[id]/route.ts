@@ -38,7 +38,7 @@ export async function GET(request: NextRequest, context: { params: { id?: string
       
       console.log(missingPersonWithSightings);
       
-      return NextResponse.json(missingPerson);
+      return NextResponse.json(missingPersonWithSightings);
     } catch (error) {
       console.error("Error fetching missing person:", error);
       return NextResponse.json(

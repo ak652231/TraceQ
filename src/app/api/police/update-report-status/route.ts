@@ -27,7 +27,6 @@ if(status === "NOTIFIED_FAMILY") {
   await prisma.sightingReport.update({
       where: { id: reportId },
       data: {
-        showUser: true,
         isSentVerification: true,
       },
   });
@@ -45,6 +44,7 @@ if(status === "NOTIFIED_FAMILY") {
       where: { id: reportId },
       data: {
         status: status,
+        showUser: true,
       },
     });
 

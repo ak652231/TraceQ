@@ -1,7 +1,6 @@
 "use client"
-
-import { useState, useEffect , useRef} from "react"
-import { useRouter, useParams } from "next/navigation"
+import { useEffect, useRef } from "react"
+import { useParams, useRouter } from "next/navigation"
 import { Montserrat, Poppins } from "next/font/google"
 import Image from "next/image"
 import dynamic from "next/dynamic"
@@ -11,7 +10,6 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  Search,
   ArrowLeft,
   User,
   Phone,
@@ -30,9 +28,22 @@ import {
   Clipboard,
   History,
   Eye,
+  Search,
 } from "lucide-react"
-import Cookies from "js-cookie"
-import { io } from "socket.io-client"
+import { useAppDispatch, useAppSelector } from "../../../../../store/hooks"
+import { checkUserLogin } from "../../../../../store/slices/authSlice"
+import {
+  fetchSightingReportDetail,
+  updateReportStatus,
+  setActiveTab,
+  toggleSection,
+  resetState,
+} from "../../../../../store/slices/sightingReportDetailSlice"
+import { setMousePosition } from "../../../../../store/slices/uiSlice"
+import { initializeSocket, disconnectSocket } from "../../../utils/socket"
+import { formatDate } from "../../../utils/formatters"
+import StatusBadge from "@/components/police/status-badge"
+import TimelineItem from "@/components/police/timeline-item"
 
 const MapWithNoSSR = dynamic(() => import("@/components/SightingMap"), {
   ssr: false,
@@ -56,271 +67,99 @@ const poppins = Poppins({
   display: "swap",
 })
 
-const StatusBadge = ({ status }) => {
-  const statusStyles = {
-    Pending: "bg-yellow-100 text-yellow-800",
-    Verified: "bg-green-100 text-green-800",
-    Rejected: "bg-red-100 text-red-800",
-    Investigating: "bg-blue-100 text-blue-800",
-  }
-
-  const statusIcons = {
-    Pending: <AlertCircle className="h-3.5 w-3.5 mr-1" />,
-    Verified: <CheckCircle className="h-3.5 w-3.5 mr-1" />,
-    Rejected: <XCircle className="h-3.5 w-3.5 mr-1" />,
-    Investigating: <Search className="h-3.5 w-3.5 mr-1" />,
-  }
-
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusStyles[status] || "bg-gray-100 text-gray-800"}`}
-    >
-      {statusIcons[status]}
-      {status}
-    </span>
-  )
-}
-
-const TimelineItem = ({ date, title, description, icon: Icon, color }) => {
-  return (
-    <div className="flex mb-6 last:mb-0">
-      <div className="flex flex-col items-center mr-4">
-        <div className={`p-2 rounded-full ${color} text-white`}>
-          <Icon className="h-4 w-4" />
-        </div>
-        <div className="flex-1 w-px bg-gray-200 my-2"></div>
-      </div>
-      <div className="flex-1">
-        <p className="text-xs text-gray-500">{date}</p>
-        <h4 className="font-medium text-gray-800 mb-1">{title}</h4>
-        <p className="text-sm text-gray-600">{description}</p>
-      </div>
-    </div>
-  )
-}
-
 export default function SightingReportDetail() {
   const router = useRouter()
   const params = useParams()
-  const reportId = params.id
+  const reportId = params.id as string
+  const dispatch = useAppDispatch()
+  const socketRef = useRef<any>(null)
 
-  const [report, setReport] = useState(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [isUpdating, setIsUpdating] = useState(false)
-  const [activeTab, setActiveTab] = useState("details")
-  const [showActionForm, setShowActionForm] = useState(false)
-  const [actionType, setActionType] = useState("NOTIFIED_FAMILY")
-  const [actionRemarks, setActionRemarks] = useState("")
-  const [mapMarkers, setMapMarkers] = useState([])
-  
-  const socketRef = useRef(null)
-  const [expandedSections, setExpandedSections] = useState({
-    missingPerson: true,
-    sightingDetails: true,
-    photoEvidence: true,
-    familyInteractions: true,
-    policeActions: true,
-  })
-  const [userId, setUserId] = useState("")
-  const [isLogin, setIsLogin] = useState(false)
+  // Redux state
+  const { userId, isAuthenticated } = useAppSelector((state) => state.auth)
+  const { mousePosition } = useAppSelector((state) => state.ui)
+  const { report, isLoading, isUpdating, error, activeTab, expandedSections, mapMarkers, timelineEvents } =
+    useAppSelector((state) => state.sightingReportDetail)
 
-  const checkUserLogin = () => {
-    const token = Cookies.get("sessionToken") 
-    if (token) {
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      dispatch(setMousePosition({ x: e.clientX, y: e.clientY }))
+    }
+
+    window.addEventListener("mousemove", handleMouseMove)
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove)
+    }
+  }, [dispatch])
+
+  useEffect(() => {
+    if (isAuthenticated && userId) {
+      initializeSocket(userId, dispatch, null, "reportDetail")
+    }
+
+    return () => {
+      disconnectSocket()
+    }
+  }, [isAuthenticated, userId, dispatch])
+
+  useEffect(() => {
+    const initializeData = async () => {
       try {
-        const decoded = JSON.parse(atob(token.split(".")[1]))
-        setUserId(decoded.id)
-        setIsLogin(true)
-        return true
-      } catch (error) {
-        console.error("Error decoding token:", error)
-        setIsLogin(false)
-        return false
-      }
-    } else {
-      setIsLogin(false)
-      return false
-    }
-  }
-  useEffect(() => {
-    checkUserLogin()
-  }, [])
-
-  useEffect(() => {
-    if (isLogin && userId) {
-      initializeSocket()
-    }
-  }, [isLogin, userId])
-  const initializeSocket = () => {
-    if (!socketRef.current && isLogin && userId) {
-      const socket = io()
-
-      socket.on("connect", () => {
-        console.log("Socket connected in myreports")
-        socket.emit("authenticate", userId)
-        console.log("Authenticated with socket server" + userId)
-      })
-
-      socket.on("notification", (data) => {
-        const sightingId = data.sightingReportId;
-        console.log("Notification received for missing person:", sightingId);
-      
-        setReport((prevReport) => ({
-          ...prevReport,
-          familyInteractions: {
-            ...prevReport.familyInteractions, 
-            response: data.action 
-          }
-        }));
-      });
-      
-      
-
-      socketRef.current = socket
-    }
-  }
-  const formatDate = (dateString) => {
-    const options = { year: "numeric", month: "long", day: "numeric" }
-    return new Date(dateString).toLocaleDateString(undefined, options)
-  }
-
-  const formatDateTime = (dateString) => {
-    const options = { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }
-    return new Date(dateString).toLocaleDateString(undefined, options)
-  }
-
-  const toggleSection = (section) => {
-    setExpandedSections((prev) => ({
-      ...prev,
-      [section]: !prev[section],
-    }))
-  }
-
-  useEffect(() => {
-    const fetchReportData = async () => {
-      if (!reportId || !userId) return
-
-      try {
-        setIsLoading(true)
-        setError(null)
-
-        const response = await fetch(`/api/sighting-reports/${reportId}`)
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch report: ${response.status}`)
+        const resultAction = await dispatch(checkUserLogin())
+        if (checkUserLogin.rejected.match(resultAction)) {
+          router.push("/auth")
+          return
         }
 
-        const data = await response.json()
-        setReport(data)
-
-        const markers = []
-
-        markers.push({
-          id: "sighting",
-          position: [data.sightingLat, data.sightingLng],
-          title: "Sighting Location",
-          status: data.status,
-          isSelected: true,
-        })
-
-        if (data.missingPerson?.lat && data.missingPerson?.lng) {
-          markers.push({
-            id: "lastSeen",
-            position: [data.missingPerson.lat, data.missingPerson.lng],
-            title: "Last Seen Location",
-            status: "lastSeen",
-            isSelected: false,
-          })
-        }
-
-        setMapMarkers(markers)
+        dispatch(fetchSightingReportDetail(reportId))
       } catch (error) {
-        console.error("Error fetching report:", error)
-        setError("Failed to load report details. Please try again.")
-      } finally {
-        setIsLoading(false)
+        console.error("Error initializing data:", error)
       }
     }
 
-    fetchReportData()
-  }, [reportId,  userId])
+    initializeData()
 
-  const updateReportStatus = async (newStatus) => {
+    return () => {
+      dispatch(resetState())
+    }
+  }, [dispatch, reportId, router])
+
+  const handleUpdateReportStatus = async (newStatus: string) => {
     if (!userId || !report) return
 
-    try {
-      setIsUpdating(true)
-      setError(null)
-
-      const response = await fetch(`/api/police/update-report-status`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          reportId: report.id,
-          status: newStatus,
-          policeId: userId,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to update report status: ${response.status}`)
-      }
-
-      setReport((prev) => ({
-        ...prev,
+    await dispatch(
+      updateReportStatus({
+        reportId: report.id,
         status: newStatus,
-      }))
-
-      let notificationMessage = ""
-
-      switch (newStatus) {
-        case "NOTIFIED_FAMILY":
-          notificationMessage = "A new suspect has been found. Please verify if this is your missing person."
-          break
-        case "SENT_TEAM":
-          if (report.showUser) {
-            notificationMessage = "Police have started an investigation on your sighting report."
-          }
-          break
-        case "SOLVED":
-          notificationMessage = "Your missing person case has been marked as solved by the police."
-          break
-        case "REJECT":
-          if (report.showUser) {
-            notificationMessage = "Your sighting report has been closed by the police."
-          }
-          break
-      }
-
-      if (notificationMessage) {
-        await fetch("/api/notifications/create", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            userId: report.missingPerson.userId,
-            sightingReportId: report.id,
-            missingPersonId: report.missingPersonId,
-            type: "POLICE_ACTION_UPDATE",
-            message: notificationMessage,
-            status: newStatus
-          }),
-        })
-      }
-    } catch (error) {
-      console.error("Error updating report status:", error)
-      setError("Failed to update report status. Please try again.")
-    } finally {
-      setIsUpdating(false)
-    }
+        policeId: userId,
+        missingPersonId: report.missingPersonId,
+        missingPersonUserId: report.missingPerson?.userId || "",
+      }),
+    )
   }
 
   const printReport = () => {
     window.print()
+  }
+
+  const getIconComponent = (iconName: string) => {
+    switch (iconName) {
+      case "AlertCircle":
+        return AlertCircle
+      case "Eye":
+        return Eye
+      case "Bell":
+        return Bell
+      case "Users":
+        return Users
+      case "FileCheck":
+        return FileCheck
+      case "CheckCircle":
+        return CheckCircle
+      case "XCircle":
+        return XCircle
+      default:
+        return AlertCircle
+    }
   }
 
   if (!userId || isLoading) {
@@ -377,76 +216,29 @@ export default function SightingReportDetail() {
     )
   }
 
-  const timelineEvents = []
-
-  if (report.missingPerson?.createdAt) {
-    timelineEvents.push({
-      date: formatDateTime(report.missingPerson.createdAt),
-      title: "Missing Person Reported",
-      description: `${report.missingPerson.reporterName} reported ${report.missingPerson.fullName} as missing.`,
-      icon: AlertCircle,
-      color: "bg-red-500",
-    })
+  const formatDateTime = (dateString: string) => {
+    const options: Intl.DateTimeFormatOptions = {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }
+    return new Date(dateString).toLocaleDateString(undefined, options)
   }
-
-  timelineEvents.push({
-    date: formatDateTime(report.createdAt),
-    title: "Sighting Reported",
-    description: `${report.reporter?.name || "Anonymous"} reported seeing the missing person at ${report.locationDetails}.`,
-    icon: Eye,
-    color: "bg-blue-500",
-  })
-
-  if (report.policeActions) {
-    const actionTitle =
-      report.policeActions.actionTaken === "NOTIFIED_FAMILY"
-        ? "Family Notified"
-        : report.policeActions.actionTaken === "SENT_TEAM"
-          ? "Investigation Team Dispatched"
-          : "Case Closed"
-
-    const actionIcon =
-      report.policeActions.actionTaken === "NOTIFIED_FAMILY"
-        ? Bell
-        : report.policeActions.actionTaken === "SENT_TEAM"
-          ? Users
-          : FileCheck
-
-    timelineEvents.push({
-      date: formatDateTime(report.policeActions.createdAt),
-      title: actionTitle,
-      description: report.policeActions.remarks || `Police officer took action: ${actionTitle}`,
-      icon: actionIcon,
-      color: "bg-indigo-500",
-    })
-  }
-
-  if (report.familyInteractions) {
-    timelineEvents.push({
-      date: formatDateTime(report.familyInteractions.createdAt),
-      title:
-        report.familyInteractions.response === "CONFIRMED" ? "Family Confirmed Sighting" : "Family Denied Sighting",
-      description:
-        report.familyInteractions.notes ||
-        `Family ${report.familyInteractions.response === "CONFIRMED" ? "confirmed" : "denied"} this sighting report.`,
-      icon: report.familyInteractions.response === "CONFIRMED" ? CheckCircle : XCircle,
-      color: report.familyInteractions.response === "CONFIRMED" ? "bg-green-500" : "bg-red-500",
-    })
-  }
-
-  timelineEvents.sort((a, b) => new Date(a.date) - new Date(b.date))
 
   return (
     <div
-      className={`min-h-screen bg-gradient-to-br from-red-50 to-white p-4 md:p-8 ${montserrat.variable} ${poppins.variable}`}
+      className={`min-h-screen bg-gradient-to-br from-red-50 to-white p-4 md:p-8 relative overflow-hidden ${montserrat.variable} ${poppins.variable}`}
     >
       {/* Main container */}
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-7xl mx-auto relative z-10 pt-20">
         {/* Header */}
         <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between">
           <div className="flex items-center mb-4 md:mb-0">
             <button
-              onClick={() => router.push("/police/dashboard")}
+              onClick={() => router.back()}
+
               className="mr-4 p-2 rounded-full bg-white shadow-sm hover:bg-gray-100"
               aria-label="Back to dashboard"
             >
@@ -496,32 +288,36 @@ export default function SightingReportDetail() {
         <div className="mb-6 border-b border-gray-200">
           <div className="flex overflow-x-auto">
             <button
-              onClick={() => setActiveTab("details")}
-              className={`px-4 py-2 font-medium text-sm whitespace-nowrap ${activeTab === "details" ? "text-red-600 border-b-2 border-red-600" : "text-gray-600 hover:text-gray-800"
-                }`}
+              onClick={() => dispatch(setActiveTab("details"))}
+              className={`px-4 py-2 font-medium text-sm whitespace-nowrap ${
+                activeTab === "details" ? "text-red-600 border-b-2 border-red-600" : "text-gray-600 hover:text-gray-800"
+              }`}
             >
               Report Details
             </button>
             <button
-              onClick={() => setActiveTab("timeline")}
-              className={`px-4 py-2 font-medium text-sm whitespace-nowrap ${activeTab === "timeline"
+              onClick={() => dispatch(setActiveTab("timeline"))}
+              className={`px-4 py-2 font-medium text-sm whitespace-nowrap ${
+                activeTab === "timeline"
                   ? "text-red-600 border-b-2 border-red-600"
                   : "text-gray-600 hover:text-gray-800"
-                }`}
+              }`}
             >
               Timeline
             </button>
             <button
-              onClick={() => setActiveTab("map")}
-              className={`px-4 py-2 font-medium text-sm whitespace-nowrap ${activeTab === "map" ? "text-red-600 border-b-2 border-red-600" : "text-gray-600 hover:text-gray-800"
-                }`}
+              onClick={() => dispatch(setActiveTab("map"))}
+              className={`px-4 py-2 font-medium text-sm whitespace-nowrap ${
+                activeTab === "map" ? "text-red-600 border-b-2 border-red-600" : "text-gray-600 hover:text-gray-800"
+              }`}
             >
               Map View
             </button>
             <button
-              onClick={() => setActiveTab("actions")}
-              className={`px-4 py-2 font-medium text-sm whitespace-nowrap ${activeTab === "actions" ? "text-red-600 border-b-2 border-red-600" : "text-gray-600 hover:text-gray-800"
-                }`}
+              onClick={() => dispatch(setActiveTab("actions"))}
+              className={`px-4 py-2 font-medium text-sm whitespace-nowrap ${
+                activeTab === "actions" ? "text-red-600 border-b-2 border-red-600" : "text-gray-600 hover:text-gray-800"
+              }`}
             >
               Actions
             </button>
@@ -537,7 +333,7 @@ export default function SightingReportDetail() {
               <div className="bg-white rounded-xl shadow-md overflow-hidden">
                 <div
                   className="p-4 border-b border-gray-100 flex justify-between items-center cursor-pointer"
-                  onClick={() => toggleSection("missingPerson")}
+                  onClick={() => dispatch(toggleSection("missingPerson"))}
                 >
                   <h2 className="font-poppins font-semibold text-lg text-gray-800 flex items-center">
                     <User className="h-5 w-5 mr-2 text-red-500" />
@@ -712,7 +508,7 @@ export default function SightingReportDetail() {
               <div className="bg-white rounded-xl shadow-md overflow-hidden">
                 <div
                   className="p-4 border-b border-gray-100 flex justify-between items-center cursor-pointer"
-                  onClick={() => toggleSection("sightingDetails")}
+                  onClick={() => dispatch(toggleSection("sightingDetails"))}
                 >
                   <h2 className="font-poppins font-semibold text-lg text-gray-800 flex items-center">
                     <Eye className="h-5 w-5 mr-2 text-red-500" />
@@ -830,7 +626,7 @@ export default function SightingReportDetail() {
               <div className="bg-white rounded-xl shadow-md overflow-hidden">
                 <div
                   className="p-4 border-b border-gray-100 flex justify-between items-center cursor-pointer"
-                  onClick={() => toggleSection("photoEvidence")}
+                  onClick={() => dispatch(toggleSection("photoEvidence"))}
                 >
                   <h2 className="font-poppins font-semibold text-lg text-gray-800 flex items-center">
                     <Camera className="h-5 w-5 mr-2 text-red-500" />
@@ -944,7 +740,7 @@ export default function SightingReportDetail() {
               <div className="bg-white rounded-xl shadow-md overflow-hidden">
                 <div
                   className="p-4 border-b border-gray-100 flex justify-between items-center cursor-pointer"
-                  onClick={() => toggleSection("familyInteractions")}
+                  onClick={() => dispatch(toggleSection("familyInteractions"))}
                 >
                   <h2 className="font-poppins font-semibold text-lg text-gray-800 flex items-center">
                     <MessageCircle className="h-5 w-5 mr-2 text-red-500" />
@@ -963,8 +759,9 @@ export default function SightingReportDetail() {
                       <div className="bg-gray-50 rounded-md p-4">
                         <div className="flex items-start mb-3">
                           <div
-                            className={`p-2 rounded-full mr-3 ${report.familyInteractions.response === "CONFIRMED" ? "bg-green-100" : "bg-red-100"
-                              }`}
+                            className={`p-2 rounded-full mr-3 ${
+                              report.familyInteractions.response === "CONFIRMED" ? "bg-green-100" : "bg-red-100"
+                            }`}
                           >
                             {report.familyInteractions.response === "CONFIRMED" ? (
                               <CheckCircle className="h-5 w-5 text-green-600" />
@@ -1035,7 +832,7 @@ export default function SightingReportDetail() {
               <div className="bg-white rounded-xl shadow-md overflow-hidden">
                 <div
                   className="p-4 border-b border-gray-100 flex justify-between items-center cursor-pointer"
-                  onClick={() => toggleSection("policeActions")}
+                  onClick={() => dispatch(toggleSection("policeActions"))}
                 >
                   <h2 className="font-poppins font-semibold text-lg text-gray-800 flex items-center">
                     <Clipboard className="h-5 w-5 mr-2 text-red-500" />
@@ -1055,12 +852,13 @@ export default function SightingReportDetail() {
 
                   <div className="space-y-3">
                     <button
-                      onClick={() => updateReportStatus("NOTIFIED_FAMILY")}
-                      disabled={isUpdating || report.status === "NOTIFIED_FAMILY" || report.verifiedByFamily}
-                      className={`w-full px-4 py-2 rounded-md flex items-center justify-center ${report.status === "NOTIFIED_FAMILY" || isUpdating || report.verifiedByFamily
+                      onClick={() => handleUpdateReportStatus("NOTIFIED_FAMILY")}
+                      disabled={isUpdating || report.status === "NOTIFIED_FAMILY" || report.verifiedByFamily || report.status === "SOLVED" || report.status === "REJECT"}
+                      className={`w-full px-4 py-2 rounded-md flex items-center justify-center ${
+                        report.status === "NOTIFIED_FAMILY" || isUpdating || report.verifiedByFamily || report.status === "SOLVED" || report.status === "REJECT"
                           ? "bg-gray-100 text-gray-500 cursor-not-allowed"
                           : "bg-green-100 text-green-700 hover:bg-green-200"
-                        }`}
+                      }`}
                     >
                       {isUpdating ? (
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-700 mr-2"></div>
@@ -1072,12 +870,13 @@ export default function SightingReportDetail() {
                     </button>
 
                     <button
-                      onClick={() => updateReportStatus("SENT_TEAM")}
-                      disabled={isUpdating || report.status === "SENT_TEAM"}
-                      className={`w-full px-4 py-2 rounded-md flex items-center justify-center ${report.status === "SENT_TEAM" || isUpdating
+                      onClick={() => handleUpdateReportStatus("SENT_TEAM")}
+                      disabled={isUpdating || report.status === "SENT_TEAM" || report.status === "SOLVED" || report.status === "REJECT"}
+                      className={`w-full px-4 py-2 rounded-md flex items-center justify-center ${
+                        report.status === "SENT_TEAM" || isUpdating || report.status === "SOLVED" || report.status === "REJECT"
                           ? "bg-gray-100 text-gray-500 cursor-not-allowed"
                           : "bg-blue-100 text-blue-700 hover:bg-blue-200"
-                        }`}
+                      }`}
                     >
                       {isUpdating ? (
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-700 mr-2"></div>
@@ -1087,13 +886,14 @@ export default function SightingReportDetail() {
                       Mark as Investigating
                     </button>
 
-                    <button
-                      onClick={() => updateReportStatus("SOLVED")}
-                      disabled={isUpdating || report.status === "SOLVED"}
-                      className={`w-full px-4 py-2 rounded-md flex items-center justify-center ${report.status === "SOLVED" || isUpdating
+                    <button 
+                      onClick={() => handleUpdateReportStatus("SOLVED")}
+                      disabled={isUpdating || report.status === "SOLVED" || report.status === "REJECT"}
+                      className={`w-full px-4 py-2 rounded-md flex items-center justify-center ${
+                        report.status === "SOLVED" || isUpdating || report.status === "REJECT"
                           ? "bg-gray-100 text-gray-500 cursor-not-allowed"
                           : "bg-green-100 text-green-700 hover:bg-green-200"
-                        }`}
+                      }`}
                     >
                       {isUpdating ? (
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-700 mr-2"></div>
@@ -1104,12 +904,13 @@ export default function SightingReportDetail() {
                     </button>
 
                     <button
-                      onClick={() => updateReportStatus("REJECT")}
-                      disabled={isUpdating || report.status === "REJECT"}
-                      className={`w-full px-4 py-2 rounded-md flex items-center justify-center ${report.status === "REJECT" || isUpdating
+                      onClick={() => handleUpdateReportStatus("REJECT")}
+                      disabled={isUpdating || report.status === "REJECT" || report.status === "SOLVED"}
+                      className={`w-full px-4 py-2 rounded-md flex items-center justify-center ${
+                        report.status === "REJECT" || isUpdating || report.status === "SOLVED"
                           ? "bg-gray-100 text-gray-500 cursor-not-allowed"
                           : "bg-red-100 text-red-700 hover:bg-red-200"
-                        }`}
+                      }`}
                     >
                       {isUpdating ? (
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-700 mr-2"></div>
@@ -1143,7 +944,7 @@ export default function SightingReportDetail() {
                       date={event.date}
                       title={event.title}
                       description={event.description}
-                      icon={event.icon}
+                      icon={getIconComponent(event.icon)}
                       color={event.color}
                     />
                   ))}
@@ -1204,29 +1005,31 @@ export default function SightingReportDetail() {
                 <h3 className="font-medium text-gray-800 mb-4">Update Status</h3>
                 <div className="space-y-3">
                   <button
-                    onClick={() => updateReportStatus("NOTIFIED_FAMILY")}
-                    disabled={isUpdating || report.status === "NOTIFIED_FAMILY" || report.verifiedByFamily}
-                    className={`w-full px-4 py-2 rounded-md flex items-center justify-center ${report.status === "NOTIFIED_FAMILY" || isUpdating || report.verifiedByFamily
+                    onClick={() => handleUpdateReportStatus("NOTIFIED_FAMILY")}
+                    disabled={isUpdating || report.status === "NOTIFIED_FAMILY" || report.verifiedByFamily || report.status === "SOLVED" || report.status === "REJECT"}
+                    className={`w-full px-4 py-2 rounded-md flex items-center justify-center ${
+                      report.status === "NOTIFIED_FAMILY" || isUpdating || report.verifiedByFamily || report.status === "SOLVED" || report.status === "REJECT"
                         ? "bg-gray-100 text-gray-500 cursor-not-allowed"
                         : "bg-green-100 text-green-700 hover:bg-green-200"
-                      }`}
+                    }`}
                   >
                     {isUpdating ? (
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-700 mr-2"></div>
                     ) : (
                       <CheckCircle className="h-4 w-4 mr-2" />
                     )}
-                    Verify Sighting
+                    Verify with family
                     {report.verifiedByFamily && <span className="ml-2 text-xs">(Already verified)</span>}
                   </button>
 
                   <button
-                    onClick={() => updateReportStatus("SENT_TEAM")}
-                    disabled={isUpdating || report.status === "SENT_TEAM"}
-                    className={`w-full px-4 py-2 rounded-md flex items-center justify-center ${report.status === "SENT_TEAM" || isUpdating
+                    onClick={() => handleUpdateReportStatus("SENT_TEAM")}
+                    disabled={isUpdating || report.status === "SENT_TEAM" || report.status === "SOLVED" || report.status === "REJECT"}
+                    className={`w-full px-4 py-2 rounded-md flex items-center justify-center ${
+                      report.status === "SENT_TEAM" || isUpdating || report.status === "SOLVED" || report.status === "REJECT"
                         ? "bg-gray-100 text-gray-500 cursor-not-allowed"
                         : "bg-blue-100 text-blue-700 hover:bg-blue-200"
-                      }`}
+                    }`}
                   >
                     {isUpdating ? (
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-700 mr-2"></div>
@@ -1237,28 +1040,30 @@ export default function SightingReportDetail() {
                   </button>
 
                   <button
-                    onClick={() => updateReportStatus("SOLVED")}
-                    disabled={isUpdating || report.status === "SOLVED"}
-                    className={`w-full px-4 py-2 rounded-md flex items-center justify-center ${report.status === "SOLVED" || isUpdating
+                    onClick={() => handleUpdateReportStatus("SOLVED")}
+                    disabled={isUpdating || report.status === "SOLVED" || report.status === "REJECT"}
+                    className={`w-full px-4 py-2 rounded-md flex items-center justify-center ${
+                      report.status === "SOLVED" || isUpdating || report.status === "REJECT"
                         ? "bg-gray-100 text-gray-500 cursor-not-allowed"
-                        : "bg-red-100 text-red-700 hover:bg-red-200"
-                      }`}
+                        : "bg-green-100 text-green-700 hover:bg-green-200"
+                    }`}
                   >
                     {isUpdating ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-700 mr-2"></div>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-700 mr-2"></div>
                     ) : (
-                      <XCircle className="h-4 w-4 mr-2" />
+                      <CheckCircle className="h-4 w-4 mr-2" />
                     )}
                     Mark as solved
                   </button>
 
                   <button
-                    onClick={() => updateReportStatus("REJECT")}
-                    disabled={isUpdating || report.status === "REJECT"}
-                    className={`w-full px-4 py-2 rounded-md flex items-center justify-center ${report.status === "REJECT" || isUpdating
+                    onClick={() => handleUpdateReportStatus("REJECT")}
+                    disabled={isUpdating || report.status === "REJECT" || report.status === "SOLVED" }
+                    className={`w-full px-4 py-2 rounded-md flex items-center justify-center ${
+                      report.status === "REJECT" || isUpdating || report.status === "SOLVED" 
                         ? "bg-gray-100 text-gray-500 cursor-not-allowed"
                         : "bg-red-100 text-red-700 hover:bg-red-200"
-                      }`}
+                    }`}
                   >
                     {isUpdating ? (
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-700 mr-2"></div>

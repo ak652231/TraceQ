@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import type React from "react"
 
 import { Montserrat, Poppins } from "next/font/google"
@@ -27,6 +27,22 @@ import Image from "next/image"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
 import dynamic from "next/dynamic"
+import { useAppDispatch, useAppSelector } from "../../../store/hooks"
+import {
+  fetchNearbyMissingPersons,
+  fetchOtherMissingPersons,
+  setSelectedPerson,
+  setSearchQuery,
+  setFilters,
+  setUserLocation,
+  setLocationPermission,
+  setViewMode,
+  setShowFilters,
+  setMapCenter,
+  setMapZoom,
+  setActiveMapLayer,
+} from "../../../store/slices/missingPersonsSlice"
+import { setMousePosition } from "../../../store/slices/uiSlice"
 
 const montserrat = Montserrat({
   subsets: ["latin"],
@@ -41,6 +57,7 @@ const poppins = Poppins({
   display: "swap",
 })
 
+// Dynamically import map components to reduce initial bundle size
 const MapContainer = dynamic(() => import("react-leaflet").then((mod) => mod.MapContainer), {
   ssr: false,
   loading: () => (
@@ -55,63 +72,25 @@ const Popup = dynamic(() => import("react-leaflet").then((mod) => mod.Popup), { 
 const ZoomControl = dynamic(() => import("react-leaflet").then((mod) => mod.ZoomControl), { ssr: false })
 const useMap = dynamic(() => import("react-leaflet").then((mod) => mod.useMap), { ssr: false })
 
-const API_BASE_URL = "/api/missing-persons"
-
-type MissingPerson = {
-  id: string
-  fullName: string
-  age: number
-  gender: string
-  photo: string
-
-  behavioralTraits?: string
-  healthConditions?: string
-
-  lastSeenLocation: string
-  lastSeenDate: string
-  lastSeenTime: string
-  lat: number
-  lng: number
-
-  height: number
-  heightUnit: string
-  weight: number
-  weightUnit: string
-  hairColor: string
-  eyeColor: string
-  clothingWorn: string
-  identifyingMarks?: string
-  additionalPhotos: string[]
-
-  reporterName: string
-  relationship: string
-  mobileNumber: string
-  emailAddress?: string
-
-  aadhaarImage: string
-  createdAt: string
-  distance?: number 
-}
-
 const MapControls = ({ userLocation }: { userLocation: { lat: number; lng: number } | null }) => {
   const map = useMap()
 
-  const handleZoomIn = () => {
+  const handleZoomIn = useCallback(() => {
     map.zoomIn()
-  }
+  }, [map])
 
-  const handleZoomOut = () => {
+  const handleZoomOut = useCallback(() => {
     map.zoomOut()
-  }
+  }, [map])
 
-  const handleCenterOnUser = () => {
+  const handleCenterOnUser = useCallback(() => {
     if (userLocation) {
       map.flyTo([userLocation.lat, userLocation.lng], 13, {
         animate: true,
         duration: 1.5,
       })
     }
-  }
+  }, [map, userLocation])
 
   return (
     <div className="absolute right-4 top-4 z-[1000] flex flex-col gap-2">
@@ -142,7 +121,7 @@ const MapControls = ({ userLocation }: { userLocation: { lat: number; lng: numbe
   )
 }
 
-const PulsingMarker = ({ person, onClick }: { person: MissingPerson; onClick: () => void }) => {
+const PulsingMarker = ({ person, onClick }: { person: any; onClick: () => void }) => {
   return (
     <Marker
       position={[person.lat, person.lng]}
@@ -187,10 +166,13 @@ const LayerControl = ({
     dark: "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png",
   }
 
-  const handleLayerChange = (layer: string) => {
-    setActiveLayer(layer)
-    setActiveMapLayer(layer) 
-  }
+  const handleLayerChange = useCallback(
+    (layer: string) => {
+      setActiveLayer(layer)
+      setActiveMapLayer(layer)
+    },
+    [setActiveMapLayer],
+  )
 
   return (
     <div className="absolute left-4 bottom-4 z-[1000]">
@@ -225,26 +207,29 @@ const LayerControl = ({
 }
 
 export default function MissingPersonsList() {
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
-  const [locationPermission, setLocationPermission] = useState<"granted" | "denied" | "pending">("pending")
-  const [viewMode, setViewMode] = useState<"list" | "map">("list")
-  const [selectedPerson, setSelectedPerson] = useState<MissingPerson | null>(null)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [filters, setFilters] = useState({
-    ageRange: [0, 100],
-    gender: "all",
-    dateRange: "all",
-  })
-  const [showFilters, setShowFilters] = useState(false)
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
-  const [isLoading, setIsLoading] = useState(false)
-  const [nearbyPersons, setNearbyPersons] = useState<MissingPerson[]>([])
-  const [otherPersons, setOtherPersons] = useState<MissingPerson[]>([])
-  const [mapCenter, setMapCenter] = useState<[number, number]>([20.5937, 78.9629]) 
-  const [mapZoom, setMapZoom] = useState(5)
-  const [activeMapLayer, setActiveMapLayer] = useState("street")
+  const dispatch = useAppDispatch()
   const mapRef = useRef(null)
 
+  // Get state from Redux
+  const {
+    userLocation,
+    locationPermission,
+    viewMode,
+    selectedPerson,
+    searchQuery,
+    filters,
+    showFilters,
+    nearbyPersons,
+    otherPersons,
+    mapCenter,
+    mapZoom,
+    activeMapLayer,
+    isLoading,
+  } = useAppSelector((state) => state.missingPersons)
+
+  const { mousePosition } = useAppSelector((state) => state.ui)
+
+  // Initialize location and fetch data
   useEffect(() => {
     const requestLocation = async () => {
       try {
@@ -255,54 +240,65 @@ export default function MissingPersonsList() {
                 lat: position.coords.latitude,
                 lng: position.coords.longitude,
               }
-              setUserLocation(location)
-              setLocationPermission("granted")
-              setMapCenter([location.lat, location.lng])
-              setMapZoom(11)
-              fetchNearbyPersons(location)
+              dispatch(setUserLocation(location))
+              dispatch(setLocationPermission("granted"))
+              dispatch(setMapCenter([location.lat, location.lng]))
+              dispatch(setMapZoom(11))
+              dispatch(fetchNearbyMissingPersons(location))
             },
             () => {
-              setLocationPermission("denied")
-              fetchOtherPersons()
+              dispatch(setLocationPermission("denied"))
+              dispatch(fetchOtherMissingPersons())
             },
           )
         } else {
-          setLocationPermission("denied")
-          fetchOtherPersons()
+          dispatch(setLocationPermission("denied"))
+          dispatch(fetchOtherMissingPersons())
         }
       } catch (error) {
         console.error("Error getting location:", error)
-        setLocationPermission("denied")
-        fetchOtherPersons()
+        dispatch(setLocationPermission("denied"))
+        dispatch(fetchOtherMissingPersons())
       }
     }
 
     requestLocation()
-  }, [])
+  }, [dispatch])
 
+  // Handle mouse movement for background animation
   useEffect(() => {
+    // Throttle mouse move events for better performance
+    let lastUpdate = 0
     const handleMouseMove = (e: MouseEvent) => {
-      setMousePosition({ x: e.clientX, y: e.clientY })
+      const now = Date.now()
+      if (now - lastUpdate > 50) {
+        // Update every 50ms
+        dispatch(setMousePosition({ x: e.clientX, y: e.clientY }))
+        lastUpdate = now
+      }
     }
 
     window.addEventListener("mousemove", handleMouseMove)
     return () => {
       window.removeEventListener("mousemove", handleMouseMove)
     }
-  }, [])
+  }, [dispatch])
 
+  // Fetch data when search or filters change
   useEffect(() => {
     if (userLocation) {
-      fetchNearbyPersons(userLocation)
+      dispatch(fetchNearbyMissingPersons(userLocation))
     }
-  }, [searchQuery, filters])
+  }, [searchQuery, filters, userLocation, dispatch])
 
+  // Fetch other persons after nearby persons are loaded
   useEffect(() => {
     if (userLocation && nearbyPersons) {
-      fetchOtherPersons()
+      dispatch(fetchOtherMissingPersons())
     }
-  }, [nearbyPersons, userLocation])
+  }, [nearbyPersons, userLocation, dispatch])
 
+  // Load Leaflet CSS and icons
   useEffect(() => {
     if (typeof window !== "undefined") {
       import("leaflet/dist/leaflet.css")
@@ -318,137 +314,130 @@ export default function MissingPersonsList() {
     }
   }, [])
 
-  const fetchNearbyPersons = async (location: { lat: number; lng: number }) => {
-    setIsLoading(true)
-    try {
-      const queryParams = new URLSearchParams({
-        lat: location.lat.toString(),
-        lng: location.lng.toString(),
-        radius: "10",
-        ...constructFilterParams(),
-      })
-      const response = await fetch(`${API_BASE_URL}/nearby?${queryParams}`)
-      if (!response.ok) throw new Error("Failed to fetch nearby missing persons")
-      const data = await response.json()
-      setNearbyPersons(data)
-    } catch (error) {
-      console.error("Error fetching nearby missing persons:", error)
-      setNearbyPersons([])
-    }
-  }
+  // Memoized handlers
+  const handleSearchChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      dispatch(setSearchQuery(e.target.value))
+    },
+    [dispatch],
+  )
 
-  const fetchOtherPersons = async () => {
-    setIsLoading(true)
-    try {
-      const queryParams = new URLSearchParams(constructFilterParams())
-      if (userLocation) {
-        queryParams.append("excludeNearby", "true")
-        queryParams.append("lat", userLocation.lat.toString())
-        queryParams.append("lng", userLocation.lng.toString())
-      }
-      const response = await fetch(`${API_BASE_URL}?${queryParams}`)
-      if (!response.ok) throw new Error("Failed to fetch missing persons")
-      const data = await response.json()
-      const filteredData = data.filter(
-        (person: MissingPerson) => !nearbyPersons.some((nearby) => nearby.id === person.id),
-      )
-      setOtherPersons(filteredData)
-    } catch (error) {
-      console.error("Error fetching other missing persons:", error)
-      setOtherPersons([])
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  const handleFilterChange = useCallback(
+    (filterType: string, value: any) => {
+      dispatch(setFilters({ filterType, value }))
+    },
+    [dispatch],
+  )
 
-  const constructFilterParams = () => {
-    const params: Record<string, string> = {}
-    if (searchQuery) params.search = searchQuery
-    if (filters.gender !== "all") params.gender = filters.gender
-    params.minAge = filters.ageRange[0].toString()
-    params.maxAge = filters.ageRange[1].toString()
-    if (filters.dateRange !== "all") params.dateRange = filters.dateRange
+  const handleSelectPerson = useCallback(
+    (person: any) => {
+      dispatch(setSelectedPerson(person))
+    },
+    [dispatch],
+  )
 
-    console.log("Constructed Params:", params)
-    return params
-  }
+  const handleToggleFilters = useCallback(() => {
+    dispatch(setShowFilters(!showFilters))
+  }, [dispatch, showFilters])
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value)
-  }
+  const handleToggleViewMode = useCallback(
+    (mode: "list" | "map") => {
+      dispatch(setViewMode(mode))
+    },
+    [dispatch],
+  )
 
-  const handleFilterChange = (filterType: string, value: any) => {
-    setFilters((prev) => {
-      const updatedFilters = { ...prev, [filterType]: value }
-      console.log("Updated Filters:", updatedFilters)
-      return updatedFilters
-    })
-  }
+  const handleSetActiveMapLayer = useCallback(
+    (layer: string) => {
+      dispatch(setActiveMapLayer(layer))
+    },
+    [dispatch],
+  )
 
-  const formatDate = (dateString: string | Date) => {
+  const handleResetFilters = useCallback(() => {
+    dispatch(setSearchQuery(""))
+    dispatch(
+      setFilters({
+        filterType: "reset",
+        value: null,
+      }),
+    )
+  }, [dispatch])
+
+  const formatDate = useCallback((dateString: string | Date) => {
     const options: Intl.DateTimeFormatOptions = { year: "numeric", month: "long", day: "numeric" }
     return new Date(dateString).toLocaleDateString("en-IN", options)
-  }
+  }, [])
 
-  const renderPersonCard = (person: MissingPerson) => (
-    <motion.div
-      key={person.id}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300"
-    >
-      <div className="md:flex">
-        <div className="md:w-1/3 relative h-48 md:h-auto">
-          <Image src={person.photo || "/placeholder.svg"} alt={person.fullName} fill className="object-cover" />
-          {person.distance !== undefined && (
-            <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full">
-              {person.distance} km away
-            </div>
-          )}
-        </div>
-        <div className="p-4 md:w-2/3 flex flex-col justify-between">
-          <div>
-            <div className="flex justify-between items-start">
-              <h3 className="font-poppins font-semibold text-xl text-gray-800">{person.fullName}</h3>
-              <span className="bg-gray-100 text-gray-700 text-xs font-medium px-2 py-1 rounded">
-                {person.gender}, {person.age} yrs
-              </span>
-            </div>
+  const renderPersonCard = useCallback(
+    (person: any) => (
+      <motion.div
+        key={person.id}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300"
+      >
+        <div className="md:flex">
+          <div className="md:w-1/3 relative h-48 md:h-auto">
+            <Image
+              src={person.photo || "/placeholder.svg"}
+              alt={person.fullName}
+              fill
+              className="object-cover"
+              sizes="(max-width: 768px) 100vw, 33vw"
+              loading="lazy"
+            />
+            {person.distance !== undefined && (
+              <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full">
+                {person.distance} km away
+              </div>
+            )}
+          </div>
+          <div className="p-4 md:w-2/3 flex flex-col justify-between">
+            <div>
+              <div className="flex justify-between items-start">
+                <h3 className="font-poppins font-semibold text-xl text-gray-800">{person.fullName}</h3>
+                <span className="bg-gray-100 text-gray-700 text-xs font-medium px-2 py-1 rounded">
+                  {person.gender}, {person.age} yrs
+                </span>
+              </div>
 
-            <div className="mt-2 flex items-start">
-              <MapPin className="h-4 w-4 text-red-500 mt-0.5 mr-1 flex-shrink-0" />
-              <p className="text-gray-600 text-sm">{person.lastSeenLocation}</p>
-            </div>
+              <div className="mt-2 flex items-start">
+                <MapPin className="h-4 w-4 text-red-500 mt-0.5 mr-1 flex-shrink-0" />
+                <p className="text-gray-600 text-sm">{person.lastSeenLocation}</p>
+              </div>
 
-            <div className="mt-1 flex items-start">
-              <Calendar className="h-4 w-4 text-red-500 mt-0.5 mr-1 flex-shrink-0" />
-              <p className="text-gray-600 text-sm">
-                Last seen on {formatDate(person.lastSeenDate)} at {person.lastSeenTime}
+              <div className="mt-1 flex items-start">
+                <Calendar className="h-4 w-4 text-red-500 mt-0.5 mr-1 flex-shrink-0" />
+                <p className="text-gray-600 text-sm">
+                  Last seen on {formatDate(person.lastSeenDate)} at {person.lastSeenTime}
+                </p>
+              </div>
+
+              <p className="mt-2 text-gray-600 text-sm line-clamp-2">
+                {person.clothingWorn}
+                {person.identifyingMarks && ` • ${person.identifyingMarks}`}
               </p>
             </div>
 
-            <p className="mt-2 text-gray-600 text-sm line-clamp-2">
-              {person.clothingWorn}
-              {person.identifyingMarks && ` • ${person.identifyingMarks}`}
-            </p>
-          </div>
-
-          <div className="mt-4 flex justify-end">
-            <button
-              onClick={() => setSelectedPerson(person)}
-              className="bg-red-600 hover:bg-red-700 text-white text-sm font-medium py-1.5 px-3 rounded-md transition-colors duration-200 flex items-center"
-            >
-              <Eye className="h-3.5 w-3.5 mr-1" />
-              View Details
-            </button>
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => handleSelectPerson(person)}
+                className="bg-red-600 hover:bg-red-700 text-white text-sm font-medium py-1.5 px-3 rounded-md transition-colors duration-200 flex items-center"
+              >
+                <Eye className="h-3.5 w-3.5 mr-1" />
+                View Details
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    </motion.div>
+      </motion.div>
+    ),
+    [formatDate, handleSelectPerson],
   )
 
-  const renderDetailModal = () => {
+  const renderDetailModal = useMemo(() => {
     if (!selectedPerson) return null
 
     return (
@@ -458,7 +447,7 @@ export default function MissingPersonsList() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
-          onClick={() => setSelectedPerson(null)}
+          onClick={() => dispatch(setSelectedPerson(null))}
         >
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
@@ -470,7 +459,7 @@ export default function MissingPersonsList() {
           >
             <div className="relative">
               <button
-                onClick={() => setSelectedPerson(null)}
+                onClick={() => dispatch(setSelectedPerson(null))}
                 className="absolute top-4 right-4 bg-white rounded-full p-1 shadow-md z-10"
               >
                 <X className="h-5 w-5 text-gray-700" />
@@ -482,6 +471,7 @@ export default function MissingPersonsList() {
                   alt={selectedPerson.fullName}
                   fill
                   className="object-contain"
+                  priority
                 />
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-6">
                   <h2 className="font-poppins font-bold text-2xl text-white">{selectedPerson.fullName}</h2>
@@ -556,13 +546,14 @@ export default function MissingPersonsList() {
                       <div className="mb-6">
                         <h3 className="font-poppins font-semibold text-lg text-gray-800 mb-4">Additional Photos</h3>
                         <div className="grid grid-cols-2 gap-2">
-                          {selectedPerson.additionalPhotos.map((photo, index) => (
+                          {selectedPerson.additionalPhotos.map((photo: string, index: number) => (
                             <div key={index} className="relative h-32 rounded-md overflow-hidden">
                               <Image
                                 src={photo || "/placeholder.svg"}
                                 alt={`Additional photo of ${selectedPerson.fullName}`}
                                 fill
                                 className="object-contain"
+                                loading="lazy"
                               />
                             </div>
                           ))}
@@ -600,12 +591,17 @@ export default function MissingPersonsList() {
                 </div>
 
                 <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-                <Link href={`/report-missing/${selectedPerson.id}`}>
-  <button className="bg-red-600 hover:bg-red-700 text-white font-poppins font-medium py-2 px-4 rounded-md transition-colors duration-200 flex items-center justify-center">
-    <Phone className="h-4 w-4 mr-2" />
-    Report to police
-  </button>
-</Link>
+                  <Link
+                    href={{
+                      pathname: `/report-missing/${selectedPerson.id}`,
+                      query: { data: JSON.stringify(selectedPerson) },
+                    }}
+                  >
+                    <button className="bg-red-600 hover:bg-red-700 text-white font-poppins font-medium py-2 px-4 rounded-md transition-colors duration-200 flex items-center justify-center">
+                      <Phone className="h-4 w-4 mr-2" />
+                      Report to police
+                    </button>
+                  </Link>
 
                   <button className="bg-gray-100 hover:bg-gray-200 text-gray-800 font-poppins font-medium py-2 px-4 rounded-md transition-colors duration-200 flex items-center justify-center">
                     <AlertCircle className="h-4 w-4 mr-2" />
@@ -618,9 +614,9 @@ export default function MissingPersonsList() {
         </motion.div>
       </AnimatePresence>
     )
-  }
+  }, [selectedPerson, dispatch, formatDate])
 
-  const renderLocationPermissionBanner = () => {
+  const renderLocationPermissionBanner = useMemo(() => {
     if (locationPermission === "granted") return null
 
     return (
@@ -640,22 +636,22 @@ export default function MissingPersonsList() {
                 className="mt-2 text-sm font-medium text-yellow-700 hover:text-yellow-600"
                 onClick={() => {
                   // Attempt to request location again
-                  setLocationPermission("pending")
+                  dispatch(setLocationPermission("pending"))
                   navigator.geolocation.getCurrentPosition(
                     (position) => {
                       const location = {
                         lat: position.coords.latitude,
                         lng: position.coords.longitude,
                       }
-                      setUserLocation(location)
-                      setLocationPermission("granted")
-                      setMapCenter([location.lat, location.lng])
-                      setMapZoom(11)
-                      fetchNearbyPersons(location)
+                      dispatch(setUserLocation(location))
+                      dispatch(setLocationPermission("granted"))
+                      dispatch(setMapCenter([location.lat, location.lng]))
+                      dispatch(setMapZoom(11))
+                      dispatch(fetchNearbyMissingPersons(location))
                     },
                     () => {
-                      setLocationPermission("denied")
-                      fetchOtherPersons()
+                      dispatch(setLocationPermission("denied"))
+                      dispatch(fetchOtherMissingPersons())
                     },
                   )
                 }}
@@ -667,9 +663,11 @@ export default function MissingPersonsList() {
         </div>
       </div>
     )
-  }
+  }, [locationPermission, dispatch])
 
-  const renderMapView = () => {
+  const renderMapView = useMemo(() => {
+    if (typeof window === "undefined") return null
+
     const L = typeof window !== "undefined" ? require("leaflet") : null
     const allPersons = [...nearbyPersons, ...otherPersons]
 
@@ -679,7 +677,7 @@ export default function MissingPersonsList() {
       return (
         <Marker
           position={[userLocation.lat, userLocation.lng]}
-          icon={L.divIcon({
+          icon={L?.divIcon({
             className: "custom-user-marker",
             html: '<div class="w-4 h-4 bg-red-600 rounded-full border-2 border-white shadow-md"></div>',
             iconSize: [20, 20],
@@ -719,7 +717,7 @@ export default function MissingPersonsList() {
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url={getMapTileUrl()}
-              key={activeMapLayer} 
+              key={activeMapLayer}
             />
 
             {/* User location marker */}
@@ -727,12 +725,12 @@ export default function MissingPersonsList() {
 
             {/* Missing persons markers */}
             {allPersons.map((person) => (
-              <PulsingMarker key={person.id} person={person} onClick={() => setSelectedPerson(person)} />
+              <PulsingMarker key={person.id} person={person} onClick={() => handleSelectPerson(person)} />
             ))}
 
             {/* Custom controls */}
             <MapControls userLocation={userLocation} />
-            <LayerControl activeMapLayer={activeMapLayer} setActiveMapLayer={setActiveMapLayer} />
+            <LayerControl activeMapLayer={activeMapLayer} setActiveMapLayer={handleSetActiveMapLayer} />
           </MapContainer>
         )}
 
@@ -760,7 +758,17 @@ export default function MissingPersonsList() {
         )}
       </div>
     )
-  }
+  }, [
+    nearbyPersons,
+    otherPersons,
+    userLocation,
+    mapCenter,
+    mapZoom,
+    activeMapLayer,
+    isLoading,
+    handleSelectPerson,
+    handleSetActiveMapLayer,
+  ])
 
   return (
     <div
@@ -789,7 +797,7 @@ export default function MissingPersonsList() {
       </div>
 
       {/* Main container */}
-      <div className="max-w-6xl mx-auto relative z-10">
+      <div className="max-w-6xl mx-auto relative z-10 pt-20">
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="font-poppins font-bold text-3xl md:text-4xl text-gray-800 mb-2">Missing Persons</h1>
@@ -798,7 +806,7 @@ export default function MissingPersonsList() {
           </p>
         </div>
 
-        {renderLocationPermissionBanner()}
+        {renderLocationPermissionBanner}
 
         {/* Search and Filter Bar */}
         <div className="bg-white rounded-xl shadow-md p-4 mb-8">
@@ -818,7 +826,7 @@ export default function MissingPersonsList() {
 
             <div className="flex gap-2">
               <button
-                onClick={() => setShowFilters(!showFilters)}
+                onClick={handleToggleFilters}
                 className="bg-gray-100 hover:bg-gray-200 text-gray-800 font-poppins font-medium py-2 px-4 rounded-md transition-colors duration-200 flex items-center"
               >
                 <Filter className="h-4 w-4 mr-2" />
@@ -828,13 +836,13 @@ export default function MissingPersonsList() {
 
               <div className="flex border border-gray-300 rounded-md overflow-hidden">
                 <button
-                  onClick={() => setViewMode("list")}
+                  onClick={() => handleToggleViewMode("list")}
                   className={`py-2 px-3 flex items-center ${viewMode === "list" ? "bg-red-600 text-white" : "bg-white text-gray-700 hover:bg-gray-100"}`}
                 >
                   <List className="h-4 w-4" />
                 </button>
                 <button
-                  onClick={() => setViewMode("map")}
+                  onClick={() => handleToggleViewMode("map")}
                   className={`py-2 px-3 flex items-center ${viewMode === "map" ? "bg-red-600 text-white" : "bg-white text-gray-700 hover:bg-gray-100"}`}
                 >
                   <MapIcon className="h-4 w-4" />
@@ -968,14 +976,7 @@ export default function MissingPersonsList() {
                   No missing persons match your current search criteria. Try adjusting your filters or search query.
                 </p>
                 <button
-                  onClick={() => {
-                    setSearchQuery("")
-                    setFilters({
-                      ageRange: [0, 100],
-                      gender: "all",
-                      dateRange: "all",
-                    })
-                  }}
+                  onClick={handleResetFilters}
                   className="mt-4 bg-red-600 hover:bg-red-700 text-white font-poppins font-medium py-2 px-4 rounded-md transition-colors duration-200"
                 >
                   Reset Filters
@@ -984,7 +985,7 @@ export default function MissingPersonsList() {
             )}
           </div>
         ) : (
-          renderMapView()
+          renderMapView
         )}
 
         {/* Report a missing person CTA */}
@@ -1022,7 +1023,7 @@ export default function MissingPersonsList() {
       </div>
 
       {/* Detail modal */}
-      {renderDetailModal()}
+      {renderDetailModal}
     </div>
   )
 }

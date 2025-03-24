@@ -641,7 +641,7 @@ export default function AuthPage() {
                   name="name"
                   value={formData.name}
                   onChange={handleChange}
-                  className={`w-full pl-10 pr-4 py-2 border ${errors.name ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors placeholder-gray-300`}
+                  className={`w-full pl-10 pr-4 py-2 border ${errors.name ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors placeholder:text-gray-400 text-black`}
                   placeholder="John Doe"
                 />
               </div>
@@ -663,7 +663,7 @@ export default function AuthPage() {
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
-                  className={`w-full pl-10 pr-4 py-2 border ${errors.email ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors placeholder-gray-300`}
+                  className={`w-full pl-10 pr-4 py-2 border ${errors.email ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors placeholder:text-gray-400 text-black`}
                   placeholder="officer@police.gov.in"
                 />
               </div>
@@ -685,7 +685,7 @@ export default function AuthPage() {
                   name="phone"
                   value={formData.phone}
                   onChange={handleChange}
-                  className={`w-full pl-10 pr-4 py-2 border ${errors.phone ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors placeholder-gray-300`}
+                  className={`w-full pl-10 pr-4 py-2 border ${errors.phone ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors placeholder:text-gray-400 text-black`}
                   placeholder="1234567890"
                 />
               </div>
@@ -707,7 +707,7 @@ export default function AuthPage() {
                   name="dateOfBirth"
                   value={formData.dateOfBirth}
                   onChange={handleChange}
-                  className={`w-full pl-10 pr-4 py-2 border ${errors.dateOfBirth ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
+                  className={`w-full pl-10 pr-4 py-2 border ${errors.dateOfBirth ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors placeholder:text-gray-400 text-black`}
                 />
               </div>
               {errors.dateOfBirth && <p className="mt-1 text-sm text-red-600">{errors.dateOfBirth}</p>}
@@ -757,7 +757,7 @@ export default function AuthPage() {
                   name="badgeId"
                   value={formData.badgeId}
                   onChange={handleChange}
-                  className={`w-full pl-10 pr-4 py-2 border ${errors.badgeId ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors `}
+                  className={`placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border ${errors.badgeId ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors `}
                   placeholder="e.g., PB12345"
                 />
               </div>
@@ -778,7 +778,7 @@ export default function AuthPage() {
                   name="designation"
                   value={formData.designation}
                   onChange={handleChange}
-                  className={`w-full pl-10 pr-4 py-2 border ${errors.designation ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors appearance-none`}
+                  className={`placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border ${errors.designation ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors appearance-none`}
                 >
                   <option value="">Select Designation</option>
                   <option value="Inspector General">Inspector General</option>
@@ -809,7 +809,7 @@ export default function AuthPage() {
                   name="department"
                   value={formData.department}
                   onChange={handleChange}
-                  className={`w-full pl-10 pr-4 py-2 border ${errors.department ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors appearance-none`}
+                  className={`placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border ${errors.department ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors appearance-none`}
                 >
                   <option value="">Select Department</option>
                   <option value="Missing Persons Unit">Missing Persons Unit</option>
@@ -841,7 +841,7 @@ export default function AuthPage() {
                   name="policeStation"
                   value={formData.policeStation}
                   onChange={handleLocChange}
-                  className={`w-full pl-10 pr-4 py-2 border ${errors.policeStation ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
+                  className={`placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border ${errors.policeStation ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
                   placeholder="Enter police station location"
                   autoComplete="off"
                 />
@@ -866,7 +866,7 @@ export default function AuthPage() {
                           <div className="flex items-start">
                             <MapPin className="h-5 w-5 text-red-500 mr-2 mt-0.5 flex-shrink-0" />
                             <div>
-                              <div className="text-sm font-medium">{suggestion.shortName}</div>
+                              <div className="text-black text-sm font-medium">{suggestion.shortName}</div>
                               {suggestion.shortName !== suggestion.name && (
                                 <div className="text-xs text-gray-500 truncate max-w-full">{suggestion.name}</div>
                               )}
@@ -1310,7 +1310,7 @@ export default function AuthPage() {
                         name="email"
                         value={emailLogin}
                         onChange={handleEmail}
-                        className={`w-full pl-10 pr-4 py-2 border ${errors.email ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors placeholder-gray-300`}
+                        className={`placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border ${errors.email ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors `}
                         placeholder="your@email.com"
                       />
                     </div>
@@ -1374,7 +1374,7 @@ export default function AuthPage() {
                         name="name"
                         value={formData.name}
                         onChange={handleChange}
-                        className={`w-full pl-10 pr-4 py-2 border ${errors.name ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors placeholder-gray-300`}
+                        className={`w-full pl-10 pr-4 py-2 border ${errors.name ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors placeholder:text-gray-400 text-black`}
                         placeholder="John Doe"
                       />
                     </div>
@@ -1396,7 +1396,7 @@ export default function AuthPage() {
                         name="email"
                         value={formData.email}
                         onChange={handleChange}
-                        className={`w-full pl-10 pr-4 py-2 border ${errors.email ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors placeholder-gray-300`}
+                        className={`w-full pl-10 pr-4 py-2 border ${errors.email ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors placeholder:text-gray-400 text-black`}
                         placeholder="your@email.com"
                       />
                     </div>
@@ -1418,7 +1418,7 @@ export default function AuthPage() {
                         name="phone"
                         value={formData.phone}
                         onChange={handleChange}
-                        className={`w-full pl-10 pr-4 py-2 border ${errors.phone ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors placeholder-gray-300`}
+                        className={`w-full pl-10 pr-4 py-2 border ${errors.phone ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors placeholder:text-gray-400 text-black`}
                         placeholder="1234567890"
                       />
                     </div>

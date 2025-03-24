@@ -72,13 +72,11 @@ export default function ReportSighting() {
   }
   useEffect(() => {
     checkUserLogin()
-  }, []) // This runs only once when the component mounts
+  }, []) 
 
   const fetchMissingPersonData = async () => {
     try {
       setIsLoading(true);
-      // Your code to fetch missing person data based on missingPersonId
-      // ...
       setIsLoading(false);
     } catch (error) {
       console.error("Error fetching missing person data:", error);
@@ -206,18 +204,15 @@ export default function ReportSighting() {
     }
   }
 
-  // Helper to format Nominatim display name to be more concise
   const formatDisplayName = (item) => {
     if (!item.address) return item.display_name
 
     const parts = []
 
-    // Add the specific local feature first if available
     if (item.type !== "administrative" && item.name) {
       parts.push(item.name)
     }
 
-    // Add meaningful address components (more specific to less specific)
     const addressPriority = [
       "road",
       "neighbourhood",
@@ -238,7 +233,6 @@ export default function ReportSighting() {
       }
     }
 
-    // Always include the city/town and state for context
     const cityValue = item.address.city || item.address.town || item.address.village
     if (cityValue && !parts.includes(cityValue)) {
       parts.push(cityValue)
@@ -251,7 +245,6 @@ export default function ReportSighting() {
     return parts.join(", ")
   }
 
-  // Function to fetch from PhotonAPI (another free geocoding service)
   const fetchFromPhoton = async (query) => {
     try {
       const response = await fetch(
@@ -311,19 +304,15 @@ export default function ReportSighting() {
     return parts.join(", ")
   }
 
-  // Function to fetch from both services and combine results
   const fetchLocationSuggestions = async (query) => {
     setIsLocationLoading(true)
 
     try {
-      // Request from both services in parallel
       const [nominatimResults, photonResults] = await Promise.all([fetchFromNominatim(query), fetchFromPhoton(query)])
 
-      // Combine and deduplicate results
       const combinedResults = []
       const addedNames = new Set()
 
-      // First add Nominatim results (often better for India)
       for (const result of nominatimResults) {
         if (!addedNames.has(result.shortName)) {
           combinedResults.push(result)
@@ -331,7 +320,6 @@ export default function ReportSighting() {
         }
       }
 
-      // Then add unique Photon results
       for (const result of photonResults) {
         if (!addedNames.has(result.shortName)) {
           combinedResults.push(result)
@@ -348,7 +336,6 @@ export default function ReportSighting() {
     }
   }
 
-  // Function to handle input change with debounce
   const handleLocationChange = (e) => {
     const { name, value } = e.target
 
@@ -364,7 +351,6 @@ export default function ReportSighting() {
       })
     }
 
-    // If the input is for location, show suggestions with debounce
     if (name === "sightingLocation") {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current)
@@ -471,7 +457,6 @@ export default function ReportSighting() {
     }
   }
 
-  // Validate form
   const validateForm = () => {
     let isValid = true
     const newErrors = { ...errors }
@@ -527,10 +512,8 @@ export default function ReportSighting() {
             canvas.width = img.width;
             canvas.height = img.height;
 
-            // Draw the original image first
             ctx.drawImage(img, 0, 0, img.width, img.height);
 
-            // Convert 2D array heatmap data to visual representation
             if (heatmapData && Array.isArray(heatmapData) && heatmapData.length > 0) {
                 const heatmapHeight = heatmapData.length;
                 const heatmapWidth = heatmapData[0].length;
@@ -732,7 +715,7 @@ const handleSubmit = async (e) => {
 
       console.log("Calling face comparison API...");
       const faceLandmarkResponse = await fetch(
-          `http://localhost:5000/compare-faces?image1_url=${encodeURIComponent(formData.reporterPhoto)}&image2_url=${encodeURIComponent(missingPerson.photo)}`
+          `http://localhost:5000/compare-faces?image1_url=${encodeURIComponent(formData.reporterPhoto)}&image2_url=${encodeURIComponent(missingPerson.photo)}&missingDesc=${missingPerson.clothingWorn}&sightingDesc=${formData.appearanceNotes}`
       );
 
       if (!faceLandmarkResponse.ok) {
@@ -751,8 +734,9 @@ const handleSubmit = async (e) => {
         image2_heatmap, 
         landmarks1, 
         landmarks2, 
-        analysis_summary 
+        analysis_summary ,
     } = comparisonData;
+    //console.log("desc:",description_match_percentage);
     const explanation = generateAIExplanation(analysis_summary);
     setAnalysis(explanation);
     console.log(explanation);
@@ -899,7 +883,7 @@ const submitSightingReport = async (reporterPhoto, missingPersonPhoto, match_per
       </div>
 
       {/* Main container */}
-      <div className="max-w-4xl mx-auto relative z-10">
+      <div className="max-w-4xl mx-auto relative z-10 pt-20">
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="font-poppins font-bold text-3xl md:text-4xl text-gray-800 mb-2">Report a Sighting</h1>
@@ -986,7 +970,7 @@ const submitSightingReport = async (reporterPhoto, missingPersonPhoto, match_per
                       value={formData.sightingDate}
                       onChange={handleChange}
                       disabled={useCurrentTime}
-                      className={`w-full pl-10 pr-4 py-2 border ${errors.sightingDate ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors ${useCurrentTime ? "bg-gray-100" : ""}`}
+                      className={`placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border ${errors.sightingDate ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors ${useCurrentTime ? "bg-gray-100" : ""}`}
                     />
                   </div>
                   {errors.sightingDate && <p className="mt-1 text-sm text-red-600">{errors.sightingDate}</p>}
@@ -1007,7 +991,7 @@ const submitSightingReport = async (reporterPhoto, missingPersonPhoto, match_per
                       value={formData.sightingTime}
                       onChange={handleChange}
                       disabled={useCurrentTime}
-                      className={`w-full pl-10 pr-4 py-2 border ${errors.sightingTime ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors ${useCurrentTime ? "bg-gray-100" : ""}`}
+                      className={`placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border ${errors.sightingTime ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors ${useCurrentTime ? "bg-gray-100" : ""}`}
                     />
                   </div>
                   {errors.sightingTime && <p className="mt-1 text-sm text-red-600">{errors.sightingTime}</p>}
@@ -1043,7 +1027,7 @@ const submitSightingReport = async (reporterPhoto, missingPersonPhoto, match_per
                     value={formData.sightingLocation}
                     onChange={handleLocationChange}
                     disabled={useCurrentLocation}
-                    className={`w-full pl-10 pr-4 py-2 border ${errors.sightingLocation ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors ${useCurrentLocation ? "bg-gray-100" : ""}`}
+                    className={`placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border ${errors.sightingLocation ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors ${useCurrentLocation ? "bg-gray-100" : ""}`}
                     placeholder="Enter location where you saw the person"
                     autoComplete="off"
                   />
@@ -1068,7 +1052,7 @@ const submitSightingReport = async (reporterPhoto, missingPersonPhoto, match_per
                             <div className="flex items-start">
                               <MapPin className="h-5 w-5 text-red-500 mr-2 mt-0.5 flex-shrink-0" />
                               <div>
-                                <div className="text-sm font-medium">{suggestion.shortName}</div>
+                                <div className="text-black text-sm font-medium">{suggestion.shortName}</div>
                                 {suggestion.shortName !== suggestion.name && (
                                   <div className="text-xs text-gray-500 truncate max-w-full">{suggestion.name}</div>
                                 )}
@@ -1136,7 +1120,7 @@ const submitSightingReport = async (reporterPhoto, missingPersonPhoto, match_per
                   value={formData.locationDetails}
                   onChange={handleChange}
                   rows={2}
-                  className={`w-full px-4 py-2 border ${errors.locationDetails ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
+                  className={`placeholder:text-gray-400 text-black w-full px-4 py-2 border ${errors.locationDetails ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
                   placeholder="E.g., near the bus stop, inside the mall, etc."
                 />
                 {errors.locationDetails && <p className="mt-1 text-sm text-red-600">{errors.locationDetails}</p>}
@@ -1210,7 +1194,7 @@ const submitSightingReport = async (reporterPhoto, missingPersonPhoto, match_per
                   value={formData.appearanceNotes}
                   onChange={handleChange}
                   rows={3}
-                  className={`w-full px-4 py-2 border ${errors.appearanceNotes ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
+                  className={`placeholder:text-gray-400 text-black w-full px-4 py-2 border ${errors.appearanceNotes ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
                   placeholder="Describe how the person looked (clothing, physical condition, etc.)"
                 />
                 {errors.appearanceNotes && <p className="mt-1 text-sm text-red-600">{errors.appearanceNotes}</p>}
@@ -1227,7 +1211,7 @@ const submitSightingReport = async (reporterPhoto, missingPersonPhoto, match_per
                   value={formData.behaviorNotes}
                   onChange={handleChange}
                   rows={3}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                  className="placeholder:text-gray-400 text-black w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
                   placeholder="Describe how the person was behaving (confused, distressed, calm, etc.)"
                 />
               </div>
@@ -1243,7 +1227,7 @@ const submitSightingReport = async (reporterPhoto, missingPersonPhoto, match_per
                   value={formData.identifyingMarks}
                   onChange={handleChange}
                   rows={2}
-                  className={`w-full px-4 py-2 border ${errors.identifyingMarks ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
+                  className={`placeholder:text-gray-400 text-black w-full px-4 py-2 border ${errors.identifyingMarks ? "border-red-500" : "border-gray-300"} rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors`}
                   placeholder="Any visible scars, tattoos, birthmarks, etc."
                 />
                 {errors.identifyingMarks && <p className="mt-1 text-sm text-red-600">{errors.identifyingMarks}</p>}
@@ -1264,7 +1248,7 @@ const submitSightingReport = async (reporterPhoto, missingPersonPhoto, match_per
                     name="seenWith"
                     value={formData.seenWith}
                     onChange={handleChange}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                    className="placeholder:text-gray-400 text-black w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
                     placeholder="Was the person with someone? Describe them."
                   />
                 </div>

@@ -1,14 +1,17 @@
 "use client"
-import { useState, useEffect , useRef} from "react"
+import { useEffect, useState, useCallback, useMemo } from "react"
 import { Montserrat, Poppins } from "next/font/google"
 import { MapPin, Calendar, Bell, Eye, AlertCircle, ChevronRight, Search, FileText, User, Clock } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import Navbar from "@/components/navbar"
-import Cookies from "js-cookie" 
-import io from "socket.io-client"
+import { useAppDispatch, useAppSelector } from "../../../store/hooks"
+import { checkUserLogin } from "../../../store/slices/authSlice"
+import { fetchMyReports, setSearchQuery } from "../../../store/slices/myReportsSlice"
+import { setLoading, setError } from "../../../store/slices/uiSlice"
+import { initializeSocket, disconnectSocket } from "../utils/socket"
 
+// Load fonts only once
 const montserrat = Montserrat({
   subsets: ["latin"],
   variable: "--font-montserrat",
@@ -22,177 +25,117 @@ const poppins = Poppins({
   display: "swap",
 })
 
-interface MissingPerson {
-  id: string
-  fullName: string
-  age: number
-  gender: string
-  photo: string
-  lastSeenLocation: string
-  lastSeenDate: string
-  lastSeenTime: string
-  status: string
-  createdAt: string
-  notificationCount?: number
-}
-
 export default function MyReportsPage() {
-  const [myReports, setMyReports] = useState<MissingPerson[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
-  const [searchQuery, setSearchQuery] = useState("")
+  const dispatch = useAppDispatch()
   const router = useRouter()
-  const [userId, setUserId] = useState("")
-const [isLogin, setIsLogin] = useState(false)
-const socketRef = useRef(null)
 
-  const checkUserLogin = () => {
-    const token = Cookies.get("sessionToken")
-    if (token) {
-      try {
-        const decoded = JSON.parse(atob(token.split(".")[1]))
-        setUserId(decoded.id)
-        setIsLogin(true)
-        return true
-      } catch (error) {
-        console.error("Error decoding token:", error)
-        setIsLogin(false)
-        return false
-      }
-    } else {
-      setIsLogin(false)
-      return false
+  // Local state for background animation to prevent Redux updates
+  const [mousePosition, setMousePositionLocal] = useState({ x: 0, y: 0 })
+
+  // Redux state - select only what's needed
+  const reports = useAppSelector((state) => state.myReports.reports)
+  const searchQuery = useAppSelector((state) => state.myReports.searchQuery)
+  const { isLoading, error } = useAppSelector((state) => state.ui)
+
+  // Throttled mouse move handler
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    // Throttle updates to every 100ms to improve performance
+    const now = Date.now()
+    if (!handleMouseMove.lastUpdate || now - handleMouseMove.lastUpdate > 100) {
+      setMousePositionLocal({ x: e.clientX, y: e.clientY })
+      handleMouseMove.lastUpdate = now
     }
-  }
+  }, [])
+  // @ts-ignore - adding property to function
+  handleMouseMove.lastUpdate = 0
+
   useEffect(() => {
-    checkUserLogin()
-  }, []) 
-  useEffect(() => {
-    if (isLogin && userId) {
-      initializeSocket()
-    }
-  }, [isLogin, userId])
-  const initializeSocket = () => {
-    if (!socketRef.current && isLogin && userId) {
-      const socket = io()
-
-      socket.on("connect", () => {
-        console.log("Socket connected in myreports")
-        socket.emit("authenticate", userId)
-        console.log("Authenticated with socket server" + userId)
-      })
-
-      socket.on("notification", (data) => {
-        const missingId = data.missingPersonId;
-        console.log("Notification received for missing person:", missingId)
-        setMyReports((prevReports) =>
-          prevReports.map((report) =>
-            report.id === missingId
-              ? {
-                ...report,
-                notificationCount: (report.notificationCount || 0) + 1,
-                status: data.newStatus === "SOLVED" 
-                  ? "Found" 
-                  : data.newStatus === "SENT_TEAM" 
-                  ? "Investigating" 
-                  : data.newStatus === "NOTIFIED_FAMILY" 
-                  ? "Awaiting Verification"
-                  : "Rejected"
-              }
-              
-              : report
-          )
-        );
-        
-      
-      });
-      
-
-      socketRef.current = socket
-    }
-  }
-  useEffect(() => {
-    if (userId) {
-      fetchMyReports();
-    }
-  }, [userId]);
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePosition({ x: e.clientX, y: e.clientY })
-    }
-
     window.addEventListener("mousemove", handleMouseMove)
     return () => {
       window.removeEventListener("mousemove", handleMouseMove)
     }
-  }, [])
+  }, [handleMouseMove])
 
-    const fetchMyReports = async () => {
-      setIsLoading(true)
+  // Data initialization effect
+  useEffect(() => {
+    let isMounted = true
+    
+    const initializeData = async () => {
+      if (!isMounted) return
+      dispatch(setLoading(true))
+
       try {
+        // Check user authentication
+        const resultAction = await dispatch(checkUserLogin())
         
-
-        const response = await fetch(`/api/my-reports`)
-        if (!response.ok) {
-          throw new Error("Failed to fetch your reports")
+        if (checkUserLogin.rejected.match(resultAction)) {
+          router.push("/auth")
+          return
         }
 
-        const data = await response.json()
-        console.log(data)
-        const reportsWithNotifications = await Promise.all(
-          data.map(async (report: MissingPerson) => {
-            try {
-              const notifResponse = await fetch(`/api/notifications/countReports?missingPersonId=${report.id}&userId=${userId}`)
-              if (notifResponse.ok) {
-                const notifData = await notifResponse.json()
-                return { ...report, notificationCount: notifData.count }
-              }
-              return { ...report, notificationCount: 0 }
-            } catch (error) {
-              console.error(`Error fetching notifications for report ${report.id}:`, error)
-              return { ...report, notificationCount: 0 }
-            }
-          }),
-        )
+        const currentUserId = resultAction.payload as string
 
-        setMyReports(reportsWithNotifications)
-      } catch (error) {
-        console.error("Error fetching reports:", error)
-        setError("Failed to load your reports. Please try again later.")
+        // Initialize socket connection for my-reports page
+        initializeSocket(currentUserId, dispatch, null, "myReports")
+
+        // Fetch my reports
+        if (isMounted) {
+          await dispatch(fetchMyReports(currentUserId))
+        }
+      } catch (err) {
+        if (isMounted) {
+          dispatch(setError("An unexpected error occurred. Please try again."))
+        }
       } finally {
-        setIsLoading(false)
+        if (isMounted) {
+          dispatch(setLoading(false))
+        }
       }
     }
 
-  const formatDate = (dateString: string) => {
+    initializeData()
+
+    return () => {
+      isMounted = false
+      disconnectSocket()
+    }
+  }, [dispatch, router])
+
+  // Memoized formatter to prevent re-calculation
+  const formatDate = useCallback((dateString: string) => {
     const options: Intl.DateTimeFormatOptions = { year: "numeric", month: "long", day: "numeric" }
     return new Date(dateString).toLocaleDateString("en-IN", options)
-  }
+  }, [])
 
-  const filteredReports = myReports.filter(
-    (report) =>
-      report.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      report.lastSeenLocation.toLowerCase().includes(searchQuery.toLowerCase()),
-  )
+  // Memoized filtered reports list
+  const filteredReports = useMemo(() => {
+    if (!searchQuery.trim()) return reports
+    
+    return reports.filter(
+      (report) =>
+        report.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        report.lastSeenLocation.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+  }, [reports, searchQuery])
 
-  const getStatusColor = (status?: string) => {
-    if (!status) return "bg-gray-100 text-gray-800"; 
-  
+  // Memoized status color getter
+  const getStatusColor = useCallback((status?: string) => {
+    if (!status) return "bg-gray-100 text-gray-800"
+
     switch (status.toLowerCase()) {
       case "pending":
-        return "bg-yellow-100 text-yellow-800";
+        return "bg-yellow-100 text-yellow-800"
       case "active":
-        return "bg-blue-100 text-blue-800";
+        return "bg-blue-100 text-blue-800"
       case "found":
-        return "bg-green-100 text-green-800";
+        return "bg-green-100 text-green-800"
       case "investigating":
-        return "bg-gray-100 text-gray-800";
+        return "bg-gray-100 text-gray-800"
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-gray-100 text-gray-800"
     }
-  };
-  
+  }, [])
+
 
   return (
     <div
@@ -240,7 +183,7 @@ const socketRef = useRef(null)
               type="text"
               placeholder="Search by name or location..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => dispatch(setSearchQuery(e.target.value))}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
             />
           </div>
@@ -269,7 +212,7 @@ const socketRef = useRef(null)
         )}
 
         {/* No reports state */}
-        {!isLoading && !error && myReports.length === 0 && (
+        {!isLoading && !error && reports.length === 0 && (
           <div className="bg-white rounded-xl shadow-md p-8 text-center">
             <FileText className="h-12 w-12 text-gray-400 mx-auto mb-3" />
             <h3 className="font-poppins font-semibold text-xl text-gray-700 mb-2">No Reports Found</h3>
@@ -336,7 +279,11 @@ const socketRef = useRef(null)
                           <User className="h-4 w-4 text-red-500 mt-0.5 mr-1 flex-shrink-0" />
                           <p className="text-gray-600 text-sm">Reported on {formatDate(report.createdAt)}</p>
                         </div>
-                        <p className="text-red-600 text-sm">Case is being handled by a police station at {report.police.station}</p>
+                        {report.police && report.police.station && (
+                          <p className="text-red-600 text-sm">
+                            Case is being handled by a police station at {report.police.station}
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -373,7 +320,7 @@ const socketRef = useRef(null)
         )}
 
         {/* No search results */}
-        {!isLoading && !error && myReports.length > 0 && filteredReports.length === 0 && (
+        {!isLoading && !error && reports.length > 0 && filteredReports.length === 0 && (
           <div className="bg-white rounded-xl shadow-md p-8 text-center">
             <Search className="h-12 w-12 text-gray-400 mx-auto mb-3" />
             <h3 className="font-poppins font-semibold text-xl text-gray-700 mb-2">No Matching Reports</h3>
@@ -381,7 +328,7 @@ const socketRef = useRef(null)
               No reports match your search criteria. Try adjusting your search terms.
             </p>
             <button
-              onClick={() => setSearchQuery("")}
+              onClick={() => dispatch(setSearchQuery(""))}
               className="mt-4 bg-gray-200 hover:bg-gray-300 text-gray-800 font-poppins font-medium py-2 px-4 rounded-md transition-colors duration-200"
             >
               Clear Search

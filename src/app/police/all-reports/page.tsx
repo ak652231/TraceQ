@@ -253,7 +253,7 @@ const [isLogin, setIsLogin] = useState(false)
       </div>
 
       {/* Main container */}
-      <div className="max-w-7xl mx-auto relative z-10">
+      <div className="max-w-7xl mx-auto relative z-10 pt-20">
         {/* Header */}
         <div className="mb-8">
           <h1 className="font-poppins font-bold text-3xl md:text-4xl text-gray-800 mb-2">Police Dashboard</h1>

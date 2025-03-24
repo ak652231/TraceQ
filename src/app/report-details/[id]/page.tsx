@@ -1,17 +1,15 @@
 "use client"
-import { useState, useEffect, useRef } from "react"
+
+import { useEffect, useCallback, useMemo, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Montserrat, Poppins } from "next/font/google"
 import {
   ArrowLeft,
   Bell,
   Calendar,
   Clock,
-  User,
   Eye,
   AlertCircle,
   CheckCircle,
-  XCircle,
   Camera,
   ChevronRight,
   Check,
@@ -22,491 +20,122 @@ import {
 import Image from "next/image"
 import Link from "next/link"
 import Navbar from "@/components/navbar"
-import io from "socket.io-client"
-
-const montserrat = Montserrat({
-  subsets: ["latin"],
-  variable: "--font-montserrat",
-  display: "swap",
-})
-
-const poppins = Poppins({
-  weight: ["400", "500", "600", "700"],
-  subsets: ["latin"],
-  variable: "--font-poppins",
-  display: "swap",
-})
-
-interface MissingPerson {
-  id: string
-  fullName: string
-  age: number
-  gender: string
-  photo: string
-  lastSeenLocation: string
-  lastSeenDate: string
-  lastSeenTime: string
-  status: string
-  createdAt: string
-}
-
-interface PoliceDetails {
-  id: string
-  station: string
-  address?: string
-  contactNumber?: string
-}
-
-interface SightingReport {
-  id: string
-  missingPersonId: string
-  sightingDate: string
-  sightingTime: string
-  appearanceNotes: string
-  behaviorNotes?: string
-  identifyingMarks: string
-  reporterPhoto: string
-  status: string
-  createdAt: string
-  showUser: boolean
-  notificationCount?: number
-  latestNotification?: string
-  verifiedByFamily?: string | null
-  policeDetails?: PoliceDetails
-}
-
-interface Notification {
-  id: string
-  type: string
-  message: string
-  isRead: boolean
-  createdAt: string
-  sightingReportId: string
-}
+import StatusIcon from "../../../components/status-icon"
+import { useAppDispatch, useAppSelector } from "../../../../store/hooks"
+import { checkUserLogin } from "../../../../store/slices/authSlice"
+import { fetchMissingPersonDetails } from "../../../../store/slices/missingPersonSlice"
+import { fetchSightingReports, setSelectedSighting, markNotificationsAsRead, handleSightingAction } from "../../../../store/slices/sightingReportsSlice"
+import { fetchNotifications } from "../../../../store/slices/notificationsSlice"
+import { setLoading, setError } from "../../../../store/slices/uiSlice"
+import { formatDate, formatTime, getStatusColor, getStatusText, isAwaitingVerification } from "../../utils/formatters"
+import { initializeSocket, disconnectSocket } from "../../utils/socket"
+import type { SightingReport } from "../../../../types"
 
 export default function ReportDetailsPage() {
   const params = useParams()
   const router = useRouter()
-  const { id } = params
+  const { id } = params as { id: string }
+  const dispatch = useAppDispatch()
 
-  const [missingPerson, setMissingPerson] = useState<MissingPerson | null>(null)
-  const [sightingReports, setSightingReports] = useState<SightingReport[]>([])
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [selectedSighting, setSelectedSighting] = useState<SightingReport | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
-  const socketRef = useRef<any>(null)
-  const [userId, setUserId] = useState("")
+  const [mousePosition, setMousePositionLocal] = useState({ x: 0, y: 0 })
+
+  const { userId } = useAppSelector((state) => state.auth)
+  const missingPerson = useAppSelector((state) => state.missingPerson.data)
+  const sightingReports = useAppSelector((state) => state.sightingReports.reports)
+  const selectedSighting = useAppSelector((state) => state.sightingReports.selectedSighting)
+  const { isLoading, error } = useAppSelector((state) => state.ui)
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    const now = Date.now()
+    if (!handleMouseMove.lastUpdate || now - handleMouseMove.lastUpdate > 100) {
+      setMousePositionLocal({ x: e.clientX, y: e.clientY })
+      handleMouseMove.lastUpdate = now
+    }
+  }, [])
+  handleMouseMove.lastUpdate = 0
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePosition({ x: e.clientX, y: e.clientY })
-    }
-
     window.addEventListener("mousemove", handleMouseMove)
     return () => {
       window.removeEventListener("mousemove", handleMouseMove)
     }
-  }, [])
-
-  const checkUserLogin = async () => {
-    try {
-      const response = await fetch("/api/auth/verifyL", { method: "GET" })
-      const data = await response.json()
-
-      if (data.isValid) {
-        setUserId(data.userId)
-        return data.userId
-      } else {
-        router.push("/auth")
-        return null
-      }
-    } catch (error) {
-      console.error("Error verifying token:", error)
-      router.push("/auth")
-      return null
-    }
-  }
-
-  const initializeSocket = (userId: string) => {
-    if (!socketRef.current && userId) {
-      const socket = io()
-
-      socket.on("connect", () => {
-        console.log("Socket connected")
-        socket.emit("authenticate", userId)
-      })
-
-      socket.on("notification", (data) => {
-        const sightingId = data.sightingReportId
-
-        if (selectedSighting && selectedSighting.id === sightingId) {
-          setSightingReports((prevReports) =>
-            prevReports.map((report) =>
-              report.id === sightingId
-                ? {
-                    ...report,
-                    status:
-                      data.newStatus === "SOLVED"
-                        ? "SOLVED"
-                        : data.newStatus === "SENT_TEAM"
-                          ? "SENT_TEAM"
-                          : data.newStatus === "NOTIFIED_FAMILY"
-                            ? "NOTIFIED_FAMILY"
-                            : "Pending",
-                  }
-                : report,
-            ),
-          )
-
-          if (selectedSighting.id === sightingId) {
-            setSelectedSighting((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    status:
-                      data.newStatus === "SOLVED"
-                        ? "SOLVED"
-                        : data.newStatus === "SENT_TEAM"
-                          ? "SENT_TEAM"
-                          : data.newStatus === "NOTIFIED_FAMILY"
-                            ? "NOTIFIED_FAMILY"
-                            : "Pending",
-                  }
-                : prev,
-            )
-          }
-        } else {
-          setSightingReports((prevReports) =>
-            prevReports.map((report) =>
-              report.id === sightingId
-                ? {
-                    ...report,
-                    notificationCount: (report.notificationCount || 0) + 1,
-                    status:
-                      data.newStatus === "SOLVED"
-                        ? "SOLVED"
-                        : data.newStatus === "SENT_TEAM"
-                          ? "SENT_TEAM"
-                          : data.newStatus === "NOTIFIED_FAMILY"
-                            ? "NOTIFIED_FAMILY"
-                            : "Pending",
-                  }
-                : report,
-            ),
-          )
-        }
-
-        if (data.newStatus === "NOTIFIED_FAMILY") {
-          console.log(data.notification.sightingReport)
-          const exists = sightingReports.some((report) => report.id === data.notification.sightingReport.id)
-
-          if (!exists) {
-            setSightingReports((prevReports) => [...prevReports, data.notification.sightingReport])
-          }
-        }
-      })
-
-      socketRef.current = socket
-    }
-  }
-
-  const fetchMissingPersonDetails = async (userId: string) => {
-    try {
-      const response = await fetch(`/api/missing-persons/${id}`)
-      if (!response.ok) {
-        throw new Error("Failed to fetch missing person details")
-      }
-      const data = await response.json()
-
-      if (data.userId !== userId) {
-        router.push("/my-reports")
-        return null
-      }
-
-      setMissingPerson(data)
-      return data
-    } catch (error) {
-      console.error("Error fetching missing person details:", error)
-      setError("Failed to load missing person details. Please try again later.")
-      return null
-    }
-  }
-
-  const fetchSightingReports = async () => {
-    try {
-      const response = await fetch(`/api/sighting-reports-user?missingPersonId=${id}`)
-      if (!response.ok) {
-        throw new Error("Failed to fetch sighting reports")
-      }
-      const data = await response.json()
-
-      const reportsWithNotifications = await Promise.all(
-        data.map(async (report: SightingReport) => {
-          try {
-            const notifResponse = await fetch(`/api/notifications/countReports?sightingReportId=${report.id}`)
-            if (notifResponse.ok) {
-              const notifData = await notifResponse.json()
-
-              const latestNotifResponse = await fetch(`/api/notifications/latest?sightingReportId=${report.id}`)
-              let latestNotification = ""
-              if (latestNotifResponse.ok) {
-                const latestNotifData = await latestNotifResponse.json()
-                latestNotification = latestNotifData.message || ""
-              }
-
-              const policeResponse = await fetch(`/api/police/details?sightingReportId=${report.id}`)
-              let policeDetails = null
-              if (policeResponse.ok) {
-                const policeData = await policeResponse.json()
-                policeDetails = policeData
-              }
-
-              return {
-                ...report,
-                notificationCount: notifData.count,
-                latestNotification,
-                policeDetails,
-              }
-            }
-            return { ...report, notificationCount: 0 }
-          } catch (error) {
-            console.error(`Error fetching notifications for report ${report.id}:`, error)
-            return { ...report, notificationCount: 0 }
-          }
-        }),
-      )
-
-      setSightingReports(reportsWithNotifications)
-
-      if (reportsWithNotifications.length > 0 && !selectedSighting) {
-        const firstReport = reportsWithNotifications[0]
-        setSelectedSighting(firstReport)
-
-        if (firstReport.notificationCount && firstReport.notificationCount > 0) {
-          await markNotificationsAsRead(firstReport.id)
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching sighting reports:", error)
-      setError("Failed to load sighting reports. Please try again later.")
-    }
-  }
-
-  const fetchNotifications = async (sightingReportId?: string) => {
-    try {
-      const url = sightingReportId
-        ? `/api/notifications?sightingReportId=${sightingReportId}`
-        : `/api/notifications?missingPersonId=${id}`
-
-      const response = await fetch(url)
-      if (response.ok) {
-        const data = await response.json()
-        setNotifications(data.notifications)
-      }
-    } catch (error) {
-      console.error("Error fetching notifications:", error)
-    }
-  }
-
-  const markNotificationsAsRead = async (sightingReportId: string) => {
-    try {
-      console.log("Marking notifications as read", sightingReportId)
-      await fetch(`/api/notifications/mark-read`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ sightingReportId }),
-      })
-
-      const navbarNotifResponse = await fetch("/api/notifications/count")
-      if (navbarNotifResponse.ok) {
-        const navbarNotifData = await navbarNotifResponse.json()
-
-        if (typeof window !== "undefined") {
-          const event = new CustomEvent("updateNotificationCount", {
-            detail: { count: navbarNotifData.count },
-          })
-          window.dispatchEvent(event)
-        }
-      }
-
-      setSightingReports((prevReports) =>
-        prevReports.map((report) => (report.id === sightingReportId ? { ...report, notificationCount: 0 } : report)),
-      )
-    } catch (error) {
-      console.error("Error marking notifications as read:", error)
-    }
-  }
-
-  const handleSightingSelect = async (sighting: SightingReport) => {
-    setSelectedSighting(sighting)
-
-    if (sighting.notificationCount && sighting.notificationCount > 0) {
-      await markNotificationsAsRead(sighting.id)
-    }
-
-    fetchNotifications(sighting.id)
-  }
-
-  const handleSightingAction = async (action: "verify" | "decline") => {
-    if (!selectedSighting) return
-
-    try {
-      const response = await fetch(`/api/sighting-reports-user/${selectedSighting.id}/family-action`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: action === "verify" ? "CONFIRMED" : "DENIED",
-          notes: `Family member ${action === "verify" ? "confirmed" : "denied"} this sighting.`,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to ${action} sighting report`)
-      }
-
-      const updatedData = await response.json()
-
-      setSelectedSighting({
-        ...selectedSighting,
-        verifiedByFamily: action === "verify" ? true : false,
-      })
-
-      fetchSightingReports()
-
-    } catch (error) {
-      console.error(`Error ${action}ing sighting report:`, error)
-      alert(`Failed to ${action} sighting report. Please try again.`)
-    }
-  }
+  }, [handleMouseMove])
 
   useEffect(() => {
+    let isMounted = true
     const initializeData = async () => {
-      setIsLoading(true)
+      if (!isMounted) return
+      dispatch(setLoading(true))
 
-      const userId = await checkUserLogin()
-      if (!userId) return
+      try {
+        const loginAction = dispatch(checkUserLogin())
+        
+        const resultAction = await loginAction
+        if (checkUserLogin.rejected.match(resultAction)) {
+          router.push("/auth")
+          return
+        }
 
-      initializeSocket(userId)
+        const currentUserId = resultAction.payload as string
+        
+        initializeSocket(currentUserId, dispatch, selectedSighting?.id || null)
+        
+        const [missingPersonAction, reportsAction] = await Promise.all([
+          dispatch(fetchMissingPersonDetails({ id, userId: currentUserId })),
+          dispatch(fetchSightingReports(id))
+        ])
 
-      const missingPersonData = await fetchMissingPersonDetails(userId)
-      if (!missingPersonData) return
+        if (fetchMissingPersonDetails.rejected.match(missingPersonAction)) {
+          router.push("/my-reports")
+          return
+        }
 
-      await fetchSightingReports()
-
-      await fetchNotifications()
-
-      setIsLoading(false)
+        if (isMounted) {
+          await dispatch(fetchNotifications({ missingPersonId: id }))
+        }
+      } catch (err) {
+        if (isMounted) {
+          dispatch(setError("An unexpected error occurred. Please try again."))
+        }
+      } finally {
+        if (isMounted) {
+          dispatch(setLoading(false))
+        }
+      }
     }
 
     initializeData()
 
     return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect()
-        socketRef.current = null
-      }
+      isMounted = false
+      disconnectSocket()
     }
-  }, [id, router])
+  }, [id, router, dispatch])
 
-  const formatDate = (dateString: string) => {
-    const options: Intl.DateTimeFormatOptions = { year: "numeric", month: "long", day: "numeric" }
-    return new Date(dateString).toLocaleDateString("en-IN", options)
-  }
+  const handleSightingSelect = useCallback(async (sighting: SightingReport) => {
+    dispatch(setSelectedSighting(sighting))
 
-  const formatTime = (timeString: string) => {
-    return timeString
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case "pending":
-        return "bg-yellow-100 text-yellow-800"
-      case "notified_family":
-        return "bg-blue-100 text-blue-800"
-      case "sent_team":
-        return "bg-purple-100 text-purple-800"
-      case "solved":
-        return "bg-green-100 text-green-800"
-      case "reject":
-        return "bg-red-100 text-red-800"
-      case "verified":
-        return "bg-green-100 text-green-800"
-      case "rejected":
-        return "bg-red-100 text-red-800"
-      case "confirmed":
-        return "bg-green-100 text-green-800"
-      case "denied":
-        return "bg-red-100 text-red-800"
-      default:
-        return "bg-gray-100 text-gray-800"
+    if (sighting.notificationCount && sighting.notificationCount > 0) {
+      await dispatch(markNotificationsAsRead(sighting.id))
     }
-  }
 
-  const getStatusText = (status: string) => {
-    switch (status.toLowerCase()) {
-      case "pending":
-        return "Pending"
-      case "notified_family":
-        return "Awaiting Verification"
-      case "sent_team":
-        return "Under Investigation"
-      case "solved":
-        return "Solved"
-      case "reject":
-        return "Rejected"
-      case "verified":
-        return "Verified"
-      case "rejected":
-        return "Rejected"
-      case "confirmed":
-        return "Verified"
-      case "denied":
-        return "Rejected"
-      default:
-        return status
-    }
-  }
+    dispatch(fetchNotifications({ sightingReportId: sighting.id }))
+  }, [dispatch])
 
-  const getStatusIcon = (status: string) => {
-    switch (status.toLowerCase()) {
-      case "pending":
-        return <AlertCircle className="h-3.5 w-3.5 mr-1" />
-      case "notified_family":
-        return <Eye className="h-3.5 w-3.5 mr-1" />
-      case "sent_team":
-        return <User className="h-3.5 w-3.5 mr-1" />
-      case "solved":
-        return <CheckCircle className="h-3.5 w-3.5 mr-1" />
-      case "reject":
-        return <XCircle className="h-3.5 w-3.5 mr-1" />
-      case "verified":
-        return <CheckCircle className="h-3.5 w-3.5 mr-1" />
-      case "rejected":
-        return <XCircle className="h-3.5 w-3.5 mr-1" />
-      case "confirmed":
-        return <CheckCircle className="h-3.5 w-3.5 mr-1" />
-      case "denied":
-        return <XCircle className="h-3.5 w-3.5 mr-1" />
-      default:
-        return <AlertCircle className="h-3.5 w-3.5 mr-1" />
-    }
-  }
+  const handleSightAction = useCallback(async (action: "verify" | "decline") => {
+    if (!selectedSighting) return
 
-  const isAwaitingVerification = (status: string) => {
-    return status.toLowerCase() === "notified_family" 
-  }
+    await dispatch(
+      handleSightingAction({
+        sightingId: selectedSighting.id,
+        action,
+      })
+    )
+  }, [dispatch, selectedSighting])
 
   if (isLoading) {
     return (
-      <div
-        className={`min-h-screen bg-gradient-to-br from-red-50 to-white p-4 md:p-8 ${montserrat.variable} ${poppins.variable} font-montserrat`}
-      >
+      <div className="min-h-screen bg-gradient-to-br from-red-50 to-white p-4 md:p-8">
         <Navbar />
         <div className="max-w-6xl mx-auto relative z-10 pt-20 flex items-center justify-center min-h-[60vh]">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500"></div>
@@ -517,9 +146,7 @@ export default function ReportDetailsPage() {
 
   if (error) {
     return (
-      <div
-        className={`min-h-screen bg-gradient-to-br from-red-50 to-white p-4 md:p-8 ${montserrat.variable} ${poppins.variable} font-montserrat`}
-      >
+      <div className="min-h-screen bg-gradient-to-br from-red-50 to-white p-4 md:p-8">
         <Navbar />
         <div className="max-w-6xl mx-auto relative z-10 pt-20">
           <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
@@ -544,29 +171,21 @@ export default function ReportDetailsPage() {
   }
 
   return (
-    <div
-      className={`min-h-screen bg-gradient-to-br from-red-50 to-white p-4 md:p-8 relative overflow-hidden ${montserrat.variable} ${poppins.variable} font-montserrat`}
-    >
+    <div className="min-h-screen bg-gradient-to-br from-red-50 to-white p-4 md:p-8 relative overflow-hidden">
       <Navbar />
 
-      {/* Animated background elements */}
-      <div className="absolute inset-0 overflow-hidden">
+      {/* Simplified background elements with reduced opacity and transforms */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div
-          className="absolute rounded-full bg-red-100 w-[500px] h-[500px] -top-[250px] -left-[250px] opacity-60"
+          className="absolute rounded-full bg-red-100 w-[500px] h-[500px] -top-[250px] -left-[250px] opacity-30"
           style={{
-            transform: `translate(${mousePosition.x * 0.02}px, ${mousePosition.y * 0.02}px)`,
+            transform: `translate(${mousePosition.x * 0.01}px, ${mousePosition.y * 0.01}px)`,
           }}
         ></div>
         <div
-          className="absolute rounded-full bg-red-100 w-[300px] h-[300px] top-[70%] -right-[150px] opacity-60"
+          className="absolute rounded-full bg-red-100 w-[300px] h-[300px] top-[70%] -right-[150px] opacity-30"
           style={{
-            transform: `translate(${-mousePosition.x * 0.01}px, ${-mousePosition.y * 0.01}px)`,
-          }}
-        ></div>
-        <div
-          className="absolute rounded-full bg-red-200 w-[200px] h-[200px] bottom-[10%] left-[10%] opacity-40"
-          style={{
-            transform: `translate(${mousePosition.x * 0.015}px, ${-mousePosition.y * 0.015}px)`,
+            transform: `translate(${-mousePosition.x * 0.005}px, ${-mousePosition.y * 0.005}px)`,
           }}
         ></div>
       </div>
@@ -634,7 +253,7 @@ export default function ReportDetailsPage() {
                         <span
                           className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(sighting.status)}`}
                         >
-                          {getStatusIcon(sighting.status)}
+                          <StatusIcon status={sighting.status} />
                           {getStatusText(sighting.status)}
                         </span>
                       </div>
@@ -682,7 +301,10 @@ export default function ReportDetailsPage() {
                           src={selectedSighting.reporterPhoto || "/placeholder.svg?height=300&width=300"}
                           alt="Reported sighting"
                           fill
+                          sizes="(max-width: 768px) 100vw, 300px"
                           className="object-cover"
+                          priority={false}
+                          loading="lazy"
                         />
                       </div>
                     </div>
@@ -707,7 +329,7 @@ export default function ReportDetailsPage() {
                             <p
                               className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(selectedSighting.status)}`}
                             >
-                              {getStatusIcon(selectedSighting.status)}
+                              <StatusIcon status={selectedSighting.status} />
                               {getStatusText(selectedSighting.status)}
                             </p>
                           </div>
@@ -766,10 +388,10 @@ export default function ReportDetailsPage() {
                   )}
 
                   {/* Action buttons - Only show when status is NOTIFIED_FAMILY and not already verified */}
-                  {isAwaitingVerification(selectedSighting.status) && selectedSighting.verifiedByFamily=== null && (
+                  {isAwaitingVerification(selectedSighting.status) && selectedSighting.verifiedByFamily === null && (
                     <div className="mt-8 flex flex-col sm:flex-row gap-4">
                       <button
-                        onClick={() => handleSightingAction("verify")}
+                        onClick={() => handleSightAction("verify")}
                         className="flex-1 bg-green-600 hover:bg-green-700 text-white font-poppins font-medium py-3 px-4 rounded-md transition-colors duration-200 flex items-center justify-center"
                       >
                         <Check className="h-5 w-5 mr-2" />
@@ -777,7 +399,7 @@ export default function ReportDetailsPage() {
                       </button>
 
                       <button
-                        onClick={() => handleSightingAction("decline")}
+                        onClick={() => handleSightAction("decline")}
                         className="flex-1 bg-red-600 hover:bg-red-700 text-white font-poppins font-medium py-3 px-4 rounded-md transition-colors duration-200 flex items-center justify-center"
                       >
                         <X className="h-5 w-5 mr-2" />
@@ -787,12 +409,12 @@ export default function ReportDetailsPage() {
                   )}
 
                   {/* Show verification status if already verified */}
-                  {selectedSighting.verifiedByFamily!==null && (
+                  {selectedSighting.verifiedByFamily !== null && (
                     <div className="mt-6 p-4 bg-gray-50 rounded-md">
                       <p className="text-gray-700 flex items-center">
                         <CheckCircle className="h-5 w-5 mr-2 text-green-500" />
-                        This report has been{" "}
-                        {selectedSighting.verifiedByFamily === true ? "verified" : "rejected"} by you 
+                        This report has been {selectedSighting.verifiedByFamily === true ? "verified" : "rejected"} by
+                        you
                       </p>
                     </div>
                   )}
@@ -815,4 +437,3 @@ export default function ReportDetailsPage() {
     </div>
   )
 }
-
